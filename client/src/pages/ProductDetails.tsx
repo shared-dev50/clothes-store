@@ -8,19 +8,19 @@ import { useCartStore } from '../store/cartStore';
 
 export const ProductDetails: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
-  
+
   const { data: product, isLoading: loading } = useQuery({
     queryKey: ['product', slug],
     queryFn: () => getProductById(slug!),
     enabled: !!slug,
   });
-  
+
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
   const [currentVariant, setCurrentVariant] = useState<ProductVariant | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  
+
   const addToCart = useCartStore((state) => state.addToCart);
 
   // Set defaults when product is loaded
@@ -75,7 +75,7 @@ export const ProductDetails: React.FC = () => {
   const handleAddToCart = () => {
     if (product && currentVariant && !isOutOfStock) {
       addToCart(product, currentVariant, quantity);
-      // Optional: Add some toast notification here
+      // Toast notification
       alert('Added to cart!');
     }
   };
@@ -96,7 +96,7 @@ export const ProductDetails: React.FC = () => {
         <div className="w-full md:w-1/2 flex flex-col-reverse md:flex-row gap-4 h-fit sticky top-24">
           <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 lg:w-24 no-scrollbar">
             {product.images.map((img, idx) => (
-              <button 
+              <button
                 key={idx}
                 onClick={() => setActiveImageIndex(idx)}
                 className={`flex-shrink-0 w-20 aspect-[4/5] bg-brand-stone/20 ${activeImageIndex === idx ? 'ring-1 ring-brand-black' : 'opacity-60 hover:opacity-100'}`}
@@ -106,8 +106,8 @@ export const ProductDetails: React.FC = () => {
             ))}
           </div>
           <div className="flex-1 bg-brand-stone/10 aspect-[3/4] md:aspect-auto md:h-[80vh]">
-            <img 
-              src={product.images[activeImageIndex]} 
+            <img
+              src={product.images[activeImageIndex]}
               alt={product.name}
               className="w-full h-full object-cover"
             />
@@ -138,13 +138,12 @@ export const ProductDetails: React.FC = () => {
                 <button
                   key={color.name}
                   onClick={() => setSelectedColor(color.name)}
-                  className={`w-8 h-8 rounded-full border-2 transition-all ${
-                    selectedColor === color.name 
-                      ? 'border-brand-black p-0.5 scale-110' 
+                  className={`w-8 h-8 rounded-full border-2 transition-all ${selectedColor === color.name
+                      ? 'border-brand-black p-0.5 scale-110'
                       : 'border-transparent hover:border-brand-stone'
-                  }`}
+                    }`}
                 >
-                  <div 
+                  <div
                     className="w-full h-full rounded-full border border-brand-stone/20 shadow-sm"
                     style={{ backgroundColor: color.hex }}
                     title={color.name}
@@ -173,10 +172,10 @@ export const ProductDetails: React.FC = () => {
                     disabled={isSizeOutOfStock}
                     className={`
                       py-3 text-sm uppercase font-medium tracking-wider transition-all border
-                      ${selectedSize === size 
-                        ? 'border-brand-black bg-brand-black text-brand-white' 
-                        : isSizeOutOfStock 
-                          ? 'border-brand-stone/40 text-brand-stone/50 bg-brand-stone/10 cursor-not-allowed line-through' 
+                      ${selectedSize === size
+                        ? 'border-brand-black bg-brand-black text-brand-white'
+                        : isSizeOutOfStock
+                          ? 'border-brand-stone/40 text-brand-stone/50 bg-brand-stone/10 cursor-not-allowed line-through'
                           : 'border-brand-stone hover:border-brand-black bg-brand-white'
                       }
                     `}
@@ -193,7 +192,7 @@ export const ProductDetails: React.FC = () => {
             <span className="text-xs font-semibold uppercase tracking-widest block mb-3">Quantity</span>
             <div className="flex items-center gap-6">
               <div className="flex items-center border border-brand-stone bg-brand-white">
-                <button 
+                <button
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
                   disabled={quantity <= 1 || isOutOfStock}
                   className="px-4 py-3 text-brand-black hover:bg-brand-stone/20 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -201,7 +200,7 @@ export const ProductDetails: React.FC = () => {
                   <Minus size={16} />
                 </button>
                 <span className="w-8 text-center text-sm font-semibold">{quantity}</span>
-                <button 
+                <button
                   onClick={() => currentVariant && setQuantity(Math.min(currentVariant.stock, quantity + 1))}
                   disabled={!currentVariant || quantity >= currentVariant.stock || isOutOfStock}
                   className="px-4 py-3 text-brand-black hover:bg-brand-stone/20 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -209,7 +208,7 @@ export const ProductDetails: React.FC = () => {
                   <Plus size={16} />
                 </button>
               </div>
-              
+
               {currentVariant && (
                 <div className="text-xs uppercase tracking-widest font-medium">
                   {currentVariant.stock > 0 ? (
@@ -239,10 +238,10 @@ export const ProductDetails: React.FC = () => {
                 }
               `}
             >
-              {isSelectionIncomplete 
-                ? 'Select Size & Color' 
-                : isOutOfStock 
-                  ? 'Sold Out' 
+              {isSelectionIncomplete
+                ? 'Select Size & Color'
+                : isOutOfStock
+                  ? 'Sold Out'
                   : 'Add to Cart'
               }
             </button>
@@ -273,7 +272,7 @@ export const ProductDetails: React.FC = () => {
             <div className="py-5">
               <h3 className="text-xs font-semibold uppercase tracking-widest mb-3">Shipping & Returns</h3>
               <p className="text-sm text-brand-taupe leading-relaxed">
-                Free standard delivery on orders over KES 10,000 within Nairobi. 
+                Free standard delivery on orders over KES 10,000 within Nairobi.
                 Next day delivery available. Returns accepted within 14 days of receipt.
               </p>
             </div>

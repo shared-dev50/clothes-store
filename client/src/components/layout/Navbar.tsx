@@ -22,7 +22,7 @@ export const Navbar: React.FC = () => {
       <div className="bg-brand-black text-brand-white text-xs py-2 text-center font-medium tracking-wide">
         Free delivery across Nairobi on orders over KES 10,000
       </div>
-      
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Mobile menu button */}
@@ -38,7 +38,7 @@ export const Navbar: React.FC = () => {
           {/* Logo */}
           <div className="flex-shrink-0 flex items-center justify-center lg:justify-start flex-1 lg:flex-none">
             <Link to="/" className="text-xl md:text-2xl font-display font-semibold tracking-tighter uppercase">
-              Studio Nairobi
+              Clothing Store
             </Link>
           </div>
 
@@ -49,8 +49,7 @@ export const Navbar: React.FC = () => {
                 key={link.name}
                 to={link.path}
                 className={({ isActive }) =>
-                  `text-sm font-medium tracking-wide uppercase transition-colors duration-200 ${
-                    isActive ? 'text-brand-black' : 'text-brand-taupe hover:text-brand-black'
+                  `text-sm font-medium tracking-wide uppercase transition-colors duration-200 ${isActive ? 'text-brand-black' : 'text-brand-taupe hover:text-brand-black'
                   }`
                 }
               >

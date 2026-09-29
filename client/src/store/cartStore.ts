@@ -16,11 +16,11 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       cart: [],
-      
+
       addToCart: (product, variant, quantity) => {
         set((state) => {
           const existingItemIndex = state.cart.findIndex((item) => item.variantId === variant.id);
-          
+
           if (existingItemIndex >= 0) {
             const newCart = [...state.cart];
             const newQuantity = Math.min(newCart[existingItemIndex].quantity + quantity, variant.stock);
@@ -43,13 +43,13 @@ export const useCartStore = create<CartState>()(
           }
         });
       },
-      
+
       removeFromCart: (cartItemId) => {
         set((state) => ({
           cart: state.cart.filter((item) => item.id !== cartItemId),
         }));
       },
-      
+
       updateQuantity: (cartItemId, quantity) => {
         set((state) => ({
           cart: state.cart.map((item) =>
@@ -57,19 +57,19 @@ export const useCartStore = create<CartState>()(
           ),
         }));
       },
-      
+
       clearCart: () => set({ cart: [] }),
-      
+
       get subtotal() {
         return get().cart.reduce((total, item) => total + item.price * item.quantity, 0);
       },
-      
+
       get itemCount() {
         return get().cart.reduce((count, item) => count + item.quantity, 0);
       },
     }),
     {
-      name: 'studio_nairobi_cart',
+      name: 'clothing_store_cart',
     }
   )
 );

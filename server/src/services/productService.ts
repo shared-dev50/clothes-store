@@ -2,7 +2,7 @@ import prisma from '../config/db';
 
 const mapProductToFrontend = (dbProduct: any) => {
   const images = dbProduct.images.sort((a: any, b: any) => a.displayOrder - b.displayOrder).map((img: any) => img.imageUrl);
-  
+
   // Extract unique colors and sizes from variants
   const uniqueColorsMap = new Map();
   const uniqueSizesSet = new Set<string>();
@@ -12,8 +12,6 @@ const mapProductToFrontend = (dbProduct: any) => {
     totalStock += v.stock;
     uniqueSizesSet.add(v.size);
     if (!uniqueColorsMap.has(v.color)) {
-      // Create a mock hex code based on color name for now (or store it in DB later)
-      // We will map known colors to hex, or default to black
       const hexMap: Record<string, string> = {
         'Cream': '#F9F8F6',
         'Washed Black': '#2A2A2A',
@@ -33,7 +31,7 @@ const mapProductToFrontend = (dbProduct: any) => {
         'Grey': '#808080',
         'Orange': '#FFA500'
       };
-      
+
       uniqueColorsMap.set(v.color, {
         name: v.color,
         hex: hexMap[v.color] || '#000000'
@@ -46,7 +44,7 @@ const mapProductToFrontend = (dbProduct: any) => {
     name: dbProduct.name,
     slug: dbProduct.slug,
     description: dbProduct.description,
-    details: [], // Mocking empty details since we didn't add it to DB schema to keep it simple
+    details: [],
     price: dbProduct.price,
     category: dbProduct.category.name,
     images: images,
@@ -61,7 +59,7 @@ const mapProductToFrontend = (dbProduct: any) => {
 
 export const getProducts = async (filters: { category?: string, featured?: string, newArrival?: string, search?: string }) => {
   const where: any = {};
-  
+
   if (filters.category && filters.category !== 'All') {
     where.category = { name: filters.category };
   }
@@ -96,7 +94,7 @@ export const getProductBySlug = async (slug: string) => {
       variants: true,
     }
   });
-  
+
   if (!product) return null;
   return mapProductToFrontend(product);
 };

@@ -8,10 +8,8 @@ import { ProductDetails } from './pages/ProductDetails';
 import { Cart } from './pages/Cart';
 import { Checkout } from './pages/Checkout';
 
-// Create a client
 const queryClient = new QueryClient();
 
-// Scroll to top component
 const ScrollToTop = () => {
   const { pathname } = useLocation();
 
@@ -34,7 +32,7 @@ function App() {
             <Route path="product/:slug" element={<ProductDetails />} />
             <Route path="cart" element={<Cart />} />
             <Route path="checkout" element={<Checkout />} />
-            
+
             {/* Fallback routes for mockup */}
             <Route path="collections" element={<div className="py-32 text-center text-2xl uppercase tracking-widest font-display">Collections Coming Soon</div>} />
             <Route path="about" element={<div className="py-32 text-center text-2xl uppercase tracking-widest font-display">Our Story Coming Soon</div>} />

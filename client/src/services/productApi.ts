@@ -1,11 +1,10 @@
 import type { Product } from '../types';
 import { mockProducts } from '../data/mockProducts';
 
-// Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const getProducts = async (category?: string): Promise<Product[]> => {
-  await delay(500); // Simulate network latency
+  await delay(500);
   if (category && category !== 'All') {
     return mockProducts.filter((p) => p.category === category);
   }
