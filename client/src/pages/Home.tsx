@@ -26,7 +26,7 @@ export const Home: React.FC = () => {
         <img
           src={heroImage}
           alt="Studio Nairobi Collection"
-          className="absolute inset-0 w-full h-full object-cover object-center"
+          className="absolute inset-0 w-full h-full object-cover object-center md:object-[center_15%]"
         />
         <div className="absolute inset-0 bg-brand-black/20" />
 

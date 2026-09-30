@@ -38,7 +38,7 @@ export const Navbar: React.FC = () => {
           {/* Logo */}
           <div className="flex-shrink-0 flex items-center justify-center lg:justify-start flex-1 lg:flex-none">
             <Link to="/" className="text-xl md:text-2xl font-display font-semibold tracking-tighter uppercase">
-              Clothing Store
+              HBS WEAR
             </Link>
           </div>
 
