@@ -10,8 +10,10 @@ Ecommerce website for HBS Wear.
 
 ## Clone Repository
 
+```bash
 git clone https://github.com/shared-dev50/clothes-store.git
 cd clothes-store
+```
 
 ## Run Locally
 
