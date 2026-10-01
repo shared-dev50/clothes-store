@@ -18,11 +18,12 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="text-sm font-semibold tracking-widest uppercase mb-6 text-brand-stone">Shop</h4>
             <ul className="space-y-4 text-sm text-brand-stone/70">
-              <li><Link to="/shop?category=T-Shirts" className="hover:text-brand-white transition-colors">T-Shirts</Link></li>
-              <li><Link to="/shop?category=Hoodies" className="hover:text-brand-white transition-colors">Hoodies</Link></li>
-              <li><Link to="/shop?category=Trousers" className="hover:text-brand-white transition-colors">Trousers</Link></li>
-              <li><Link to="/shop?category=Jackets" className="hover:text-brand-white transition-colors">Outerwear</Link></li>
-              <li><Link to="/shop?category=Accessories" className="hover:text-brand-white transition-colors">Accessories</Link></li>
+              <li><Link to="/shop?category=Clothing" className="hover:text-brand-white transition-colors">Clothing</Link></li>
+              <li><Link to="/shop?category=Pajamas" className="hover:text-brand-white transition-colors">Pajamas</Link></li>
+              <li><Link to="/shop?category=Shoes" className="hover:text-brand-white transition-colors">Shoes</Link></li>
+              <li><Link to="/shop?category=Handbags" className="hover:text-brand-white transition-colors">Handbags</Link></li>
+              <li><Link to="/shop?category=Wigs%20%26%20Hair" className="hover:text-brand-white transition-colors">Wigs & Hair</Link></li>
+              <li><Link to="/shop?category=Wellness" className="hover:text-brand-white transition-colors">Wellness</Link></li>
             </ul>
           </div>
 

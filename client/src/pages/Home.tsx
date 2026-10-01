@@ -105,10 +105,10 @@ export const Home: React.FC = () => {
               Designed in Nairobi, constructed for the world. We focus on heavy, durable fabrics paired with relaxed, boxy cuts to create pieces that live alongside you.
             </p>
             <Link
-              to="/shop?category=Hoodies"
+              to="/shop?category=Clothing"
               className="inline-flex justify-center items-center px-8 py-4 bg-brand-black text-brand-white text-sm font-semibold tracking-widest uppercase hover:bg-brand-black/80 transition-colors self-start"
             >
-              Discover Heavyweight
+              Discover Clothing
             </Link>
           </div>
         </div>
@@ -117,26 +117,26 @@ export const Home: React.FC = () => {
       {/* Categories Highlight */}
       <section className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[600px]">
-          <Link to="/shop?category=Trousers" className="relative group overflow-hidden bg-brand-stone/20">
+          <Link to="/shop?category=Clothing" className="relative group overflow-hidden bg-brand-stone/20">
             <img
               src="https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=1200&auto=format&fit=crop"
-              alt="Trousers"
+              alt="Clothing"
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-black/10 transition-colors group-hover:bg-black/20" />
             <div className="absolute inset-0 flex items-center justify-center">
-              <h3 className="text-3xl font-display font-medium text-brand-white uppercase tracking-widest">Tailored Bottoms</h3>
+              <h3 className="text-3xl font-display font-medium text-brand-white uppercase tracking-widest">Clothing</h3>
             </div>
           </Link>
-          <Link to="/shop?category=Accessories" className="relative group overflow-hidden bg-brand-stone/20">
+          <Link to="/shop?category=Handbags" className="relative group overflow-hidden bg-brand-stone/20">
             <img
               src={accessoriesImage}
-              alt="Accessories"
+              alt="Handbags"
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-black/10 transition-colors group-hover:bg-black/20" />
             <div className="absolute inset-0 flex items-center justify-center">
-              <h3 className="text-3xl font-display font-medium text-brand-white uppercase tracking-widest">Accessories</h3>
+              <h3 className="text-3xl font-display font-medium text-brand-white uppercase tracking-widest">Handbags</h3>
             </div>
           </Link>
         </div>

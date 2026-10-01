@@ -6,10 +6,22 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAllCategoryNames = void 0;
 const db_1 = __importDefault(require("../config/db"));
 const getAllCategoryNames = async () => {
-    const categories = await db_1.default.category.findMany({
-        select: { name: true },
+    const rootCategories = await db_1.default.category.findMany({
+        where: { parentId: null },
+        include: {
+            children: {
+                orderBy: { name: 'asc' },
+            },
+        },
         orderBy: { name: 'asc' },
     });
-    return ['All', ...categories.map(c => c.name)];
+    const names = [];
+    for (const root of rootCategories) {
+        names.push(root.name);
+        for (const child of root.children) {
+            names.push(child.name);
+        }
+    }
+    return names;
 };
 exports.getAllCategoryNames = getAllCategoryNames;

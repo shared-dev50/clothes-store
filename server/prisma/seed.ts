@@ -1,473 +1,16 @@
 import { PrismaClient } from '@prisma/client';
-type ProductVariantSeed = {
-  color: string | null;
-  size: string | null;
-  stock: number;
-  sku: string;
-};
-
-type ProductSeed = {
-  name: string;
-  slug: string;
-  description: string;
-  price: number;
-  category: string;
-  images: string[];
-  variants: ProductVariantSeed[];
-  featured: boolean;
-  newArrival: boolean;
-};
 
 const prisma = new PrismaClient();
 
-const products: ProductSeed[] = [
-  // =========================================================
-  // WOMEN'S CLOTHING
-  // =========================================================
-  {
-    name: 'Satin Ruched Midi Dress',
-    slug: 'satin-ruched-midi-dress',
-    description:
-      'A sophisticated satin midi dress with a flattering ruched silhouette, designed for evening occasions and special events.',
-    price: 6500,
-    category: "Women's Clothing",
-    images: [
-      'https://images.unsplash.com/photo-1566174053879-31528523f8ae?q=80&w=1000&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Black', size: 'S', stock: 8, sku: 'DR-BK-S' },
-      { color: 'Black', size: 'M', stock: 10, sku: 'DR-BK-M' },
-      { color: 'Black', size: 'L', stock: 6, sku: 'DR-BK-L' },
-      { color: 'Emerald', size: 'M', stock: 5, sku: 'DR-EM-M' },
-    ],
-    featured: true,
-    newArrival: true,
-  },
-  {
-    name: 'Oversized Graphic Tee',
-    slug: 'oversized-graphic-tee',
-    description:
-      'Relaxed oversized cotton T-shirt with a contemporary graphic print and comfortable everyday fit.',
-    price: 2800,
-    category: "Women's Clothing",
-    images: [
-      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'White', size: 'S', stock: 12, sku: 'WT-WH-S' },
-      { color: 'White', size: 'M', stock: 15, sku: 'WT-WH-M' },
-      { color: 'Black', size: 'M', stock: 10, sku: 'WT-BK-M' },
-      { color: 'Black', size: 'L', stock: 8, sku: 'WT-BK-L' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // MEN'S CLOTHING
-  // =========================================================
-  {
-    name: 'Premium Oxford Shirt',
-    slug: 'premium-oxford-shirt',
-    description:
-      'A versatile Oxford shirt with a relaxed contemporary fit, suitable for both casual and smart-casual looks.',
-    price: 4500,
-    category: "Men's Clothing",
-    images: [
-      'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?q=80&w=1000&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'White', size: 'M', stock: 10, sku: 'OS-WH-M' },
-      { color: 'White', size: 'L', stock: 12, sku: 'OS-WH-L' },
-      { color: 'Light Blue', size: 'M', stock: 8, sku: 'OS-LB-M' },
-      { color: 'Light Blue', size: 'XL', stock: 5, sku: 'OS-LB-XL' },
-    ],
-    featured: true,
-    newArrival: false,
-  },
-  {
-    name: 'Relaxed Cargo Trousers',
-    slug: 'relaxed-cargo-trousers',
-    description:
-      'Relaxed-fit cargo trousers with practical side pockets and a contemporary streetwear silhouette.',
-    price: 5500,
-    category: "Men's Clothing",
-    images: [
-      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Olive', size: '30', stock: 8, sku: 'CG-OL-30' },
-      { color: 'Olive', size: '32', stock: 12, sku: 'CG-OL-32' },
-      { color: 'Olive', size: '34', stock: 8, sku: 'CG-OL-34' },
-      { color: 'Black', size: '32', stock: 10, sku: 'CG-BK-32' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // GIRLS' CLOTHING
-  // =========================================================
-  {
-    name: 'Girls Floral Summer Dress',
-    slug: 'girls-floral-summer-dress',
-    description:
-      'A lightweight floral dress designed for comfortable everyday wear and special occasions.',
-    price: 3200,
-    category: "Girls' Clothing",
-    images: [
-      'https://images.unsplash.com/photo-1518831959646-742c3a14ebf7?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Pink', size: '4Y', stock: 6, sku: 'GD-PK-4Y' },
-      { color: 'Pink', size: '6Y', stock: 8, sku: 'GD-PK-6Y' },
-      { color: 'Pink', size: '8Y', stock: 7, sku: 'GD-PK-8Y' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // BOYS' CLOTHING
-  // =========================================================
-  {
-    name: 'Boys Casual Polo Set',
-    slug: 'boys-casual-polo-set',
-    description:
-      'Comfortable two-piece polo and shorts set designed for everyday wear.',
-    price: 3500,
-    category: "Boys' Clothing",
-    images: [
-      'https://images.unsplash.com/photo-1519238263530-99bdd11df2ea?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Navy', size: '4Y', stock: 6, sku: 'BP-NV-4Y' },
-      { color: 'Navy', size: '6Y', stock: 8, sku: 'BP-NV-6Y' },
-      { color: 'Navy', size: '8Y', stock: 5, sku: 'BP-NV-8Y' },
-    ],
-    featured: false,
-    newArrival: false,
-  },
-
-  // =========================================================
-  // WIGS & HAIR
-  // =========================================================
-  {
-    name: 'Body Wave Lace Front Wig',
-    slug: 'body-wave-lace-front-wig',
-    description:
-      'Long body-wave lace front wig designed for a natural-looking finish and versatile styling.',
-    price: 18500,
-    category: 'Wigs & Hair',
-    images: [
-      'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Natural Black', size: '18 inch', stock: 4, sku: 'WG-BW-18' },
-      { color: 'Natural Black', size: '22 inch', stock: 3, sku: 'WG-BW-22' },
-    ],
-    featured: true,
-    newArrival: true,
-  },
-  {
-    name: 'Straight Human Hair Wig',
-    slug: 'straight-human-hair-wig',
-    description:
-      'Smooth straight-style wig with a natural finish suitable for everyday and occasion styling.',
-    price: 22000,
-    category: 'Wigs & Hair',
-    images: [
-      'https://images.unsplash.com/photo-1560869713-7d0a29430803?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Natural Black', size: '18 inch', stock: 3, sku: 'WG-ST-18' },
-      { color: 'Natural Black', size: '24 inch', stock: 2, sku: 'WG-ST-24' },
-    ],
-    featured: true,
-    newArrival: false,
-  },
-
-  // =========================================================
-  // WOMEN'S PAJAMAS
-  // =========================================================
-  {
-    name: 'Satin Pajama Set',
-    slug: 'satin-pajama-set',
-    description:
-      'Soft satin pajama set featuring a relaxed button-up top and matching trousers.',
-    price: 4500,
-    category: "Women's Pajamas",
-    images: [
-      'https://images.unsplash.com/photo-1578681994506-b8f463449011?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Champagne', size: 'S', stock: 6, sku: 'PJ-CH-S' },
-      { color: 'Champagne', size: 'M', stock: 10, sku: 'PJ-CH-M' },
-      { color: 'Champagne', size: 'L', stock: 8, sku: 'PJ-CH-L' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // MEN'S PAJAMAS
-  // =========================================================
-  {
-    name: 'Men Cotton Lounge Set',
-    slug: 'men-cotton-lounge-set',
-    description:
-      'Comfortable cotton lounge set designed for sleeping and relaxing at home.',
-    price: 4200,
-    category: "Men's Pajamas",
-    images: [
-      'https://images.unsplash.com/photo-1556906781-9a412961c28c?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Navy', size: 'M', stock: 8, sku: 'MPJ-NV-M' },
-      { color: 'Navy', size: 'L', stock: 10, sku: 'MPJ-NV-L' },
-      { color: 'Grey', size: 'XL', stock: 6, sku: 'MPJ-GR-XL' },
-    ],
-    featured: false,
-    newArrival: false,
-  },
-
-  // =========================================================
-  // GIRLS' PAJAMAS
-  // =========================================================
-  {
-    name: 'Girls Printed Pajama Set',
-    slug: 'girls-printed-pajama-set',
-    description:
-      'Soft and comfortable printed pajama set designed for children.',
-    price: 2800,
-    category: "Girls' Pajamas",
-    images: [
-      'https://images.unsplash.com/photo-1596870230751-ebdfce98ec42?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Pink', size: '4Y', stock: 7, sku: 'GP-PK-4Y' },
-      { color: 'Pink', size: '6Y', stock: 8, sku: 'GP-PK-6Y' },
-      { color: 'Pink', size: '8Y', stock: 5, sku: 'GP-PK-8Y' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // BOYS' PAJAMAS
-  // =========================================================
-  {
-    name: 'Boys Cotton Pajama Set',
-    slug: 'boys-cotton-pajama-set',
-    description:
-      'Soft cotton pajama set designed for comfortable nights and relaxed mornings.',
-    price: 2800,
-    category: "Boys' Pajamas",
-    images: [
-      'https://images.unsplash.com/photo-1503919545889-aef636e10ad4?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Blue', size: '4Y', stock: 7, sku: 'BPJ-BL-4Y' },
-      { color: 'Blue', size: '6Y', stock: 8, sku: 'BPJ-BL-6Y' },
-      { color: 'Blue', size: '8Y', stock: 6, sku: 'BPJ-BL-8Y' },
-    ],
-    featured: false,
-    newArrival: false,
-  },
-
-  // =========================================================
-  // HANDBAGS
-  // =========================================================
-  {
-    name: 'Structured Everyday Handbag',
-    slug: 'structured-everyday-handbag',
-    description:
-      'A structured everyday handbag with a spacious interior and versatile design.',
-    price: 6500,
-    category: 'Handbags',
-    images: [
-      'https://images.unsplash.com/photo-1584917865442-de89df76afd3?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Black', size: null, stock: 10, sku: 'HB-BK-01' },
-      { color: 'Tan', size: null, stock: 7, sku: 'HB-TN-01' },
-    ],
-    featured: true,
-    newArrival: false,
-  },
-  {
-    name: 'Mini Crossbody Bag',
-    slug: 'mini-crossbody-bag',
-    description:
-      'Compact crossbody handbag designed for everyday essentials.',
-    price: 3800,
-    category: 'Handbags',
-    images: [
-      'https://images.unsplash.com/photo-1594223274512-ad4803739b7c?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Black', size: null, stock: 12, sku: 'CB-BK-01' },
-      { color: 'Burgundy', size: null, stock: 6, sku: 'CB-BG-01' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // WOMEN'S SHOES
-  // =========================================================
-  {
-    name: 'Minimal Leather Loafers',
-    slug: 'minimal-leather-loafers',
-    description:
-      'Clean and versatile loafers designed to complement both casual and smart outfits.',
-    price: 6500,
-    category: "Women's Shoes",
-    images: [
-      'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Black', size: '37', stock: 5, sku: 'WL-BK-37' },
-      { color: 'Black', size: '38', stock: 7, sku: 'WL-BK-38' },
-      { color: 'Black', size: '39', stock: 6, sku: 'WL-BK-39' },
-      { color: 'Tan', size: '38', stock: 4, sku: 'WL-TN-38' },
-    ],
-    featured: true,
-    newArrival: false,
-  },
-
-  // =========================================================
-  // MEN'S SHOES
-  // =========================================================
-  {
-    name: 'Classic Casual Sneakers',
-    slug: 'classic-casual-sneakers',
-    description:
-      'Clean everyday sneakers designed for comfortable casual wear.',
-    price: 7500,
-    category: "Men's Shoes",
-    images: [
-      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'White', size: '40', stock: 5, sku: 'MS-WH-40' },
-      { color: 'White', size: '41', stock: 8, sku: 'MS-WH-41' },
-      { color: 'White', size: '42', stock: 10, sku: 'MS-WH-42' },
-      { color: 'White', size: '43', stock: 7, sku: 'MS-WH-43' },
-    ],
-    featured: true,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // GIRLS' SHOES
-  // =========================================================
-  {
-    name: 'Girls Mary Jane Shoes',
-    slug: 'girls-mary-jane-shoes',
-    description:
-      'Classic Mary Jane shoes designed for girls, suitable for school and special occasions.',
-    price: 3500,
-    category: "Girls' Shoes",
-    images: [
-      'https://images.unsplash.com/photo-1514989940723-e8e51635b782?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Black', size: '28', stock: 5, sku: 'GMJ-BK-28' },
-      { color: 'Black', size: '30', stock: 7, sku: 'GMJ-BK-30' },
-      { color: 'Black', size: '32', stock: 6, sku: 'GMJ-BK-32' },
-    ],
-    featured: false,
-    newArrival: false,
-  },
-
-  // =========================================================
-  // BOYS' SHOES
-  // =========================================================
-  {
-    name: 'Boys Casual Sneakers',
-    slug: 'boys-casual-sneakers',
-    description:
-      'Comfortable everyday sneakers designed for active boys.',
-    price: 3800,
-    category: "Boys' Shoes",
-    images: [
-      'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: 'Black', size: '30', stock: 5, sku: 'BS-BK-30' },
-      { color: 'Black', size: '32', stock: 7, sku: 'BS-BK-32' },
-      { color: 'Black', size: '34', stock: 6, sku: 'BS-BK-34' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  // =========================================================
-  // WELLNESS / WEIGHT MANAGEMENT
-  // =========================================================
-  {
-    name: 'Daily Wellness Capsules',
-    slug: 'daily-wellness-capsules',
-    description:
-      'A wellness supplement intended to complement a balanced diet and healthy lifestyle.',
-    price: 4500,
-    category: 'Weight Management',
-    images: [
-      'https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: null, size: null, stock: 20, sku: 'WC-001' },
-    ],
-    featured: false,
-    newArrival: true,
-  },
-
-  {
-    name: 'Herbal Wellness Tea',
-    slug: 'herbal-wellness-tea',
-    description:
-      'Herbal tea blend intended as part of a balanced wellness routine.',
-    price: 2500,
-    category: 'Weight Management',
-    images: [
-      'https://images.unsplash.com/photo-1544787219-7f47ccb76574?q=80&w=1000&auto=format&fit=crop',
-    ],
-    variants: [
-      { color: null, size: null, stock: 25, sku: 'WT-001' },
-    ],
-    featured: false,
-    newArrival: false,
-  },
-];
-
-// =========================================================
-// CATEGORY STRUCTURE
-// =========================================================
-
-const categories = [
+const categoriesData = [
   {
     name: 'Clothing',
     slug: 'clothing',
     children: [
-      {
-        name: "Women's Clothing",
-        slug: 'womens-clothing',
-      },
-      {
-        name: "Men's Clothing",
-        slug: 'mens-clothing',
-      },
-      {
-        name: "Girls' Clothing",
-        slug: 'girls-clothing',
-      },
-      {
-        name: "Boys' Clothing",
-        slug: 'boys-clothing',
-      },
+      { name: "Women's Clothing", slug: 'womens-clothing' },
+      { name: "Men's Clothing", slug: 'mens-clothing' },
+      { name: "Girls' Clothing", slug: 'girls-clothing' },
+      { name: "Boys' Clothing", slug: 'boys-clothing' },
     ],
   },
   {
@@ -479,22 +22,10 @@ const categories = [
     name: 'Pajamas',
     slug: 'pajamas',
     children: [
-      {
-        name: "Women's Pajamas",
-        slug: 'womens-pajamas',
-      },
-      {
-        name: "Men's Pajamas",
-        slug: 'mens-pajamas',
-      },
-      {
-        name: "Girls' Pajamas",
-        slug: 'girls-pajamas',
-      },
-      {
-        name: "Boys' Pajamas",
-        slug: 'boys-pajamas',
-      },
+      { name: "Women's Pajamas", slug: 'womens-pajamas' },
+      { name: "Men's Pajamas", slug: 'mens-pajamas' },
+      { name: "Girls' Pajamas", slug: 'girls-pajamas' },
+      { name: "Boys' Pajamas", slug: 'boys-pajamas' },
     ],
   },
   {
@@ -506,110 +37,341 @@ const categories = [
     name: 'Shoes',
     slug: 'shoes',
     children: [
-      {
-        name: "Women's Shoes",
-        slug: 'womens-shoes',
-      },
-      {
-        name: "Men's Shoes",
-        slug: 'mens-shoes',
-      },
-      {
-        name: "Girls' Shoes",
-        slug: 'girls-shoes',
-      },
-      {
-        name: "Boys' Shoes",
-        slug: 'boys-shoes',
-      },
+      { name: "Women's Shoes", slug: 'womens-shoes' },
+      { name: "Men's Shoes", slug: 'mens-shoes' },
+      { name: "Girls' Shoes", slug: 'girls-shoes' },
+      { name: "Boys' Shoes", slug: 'boys-shoes' },
     ],
   },
   {
     name: 'Wellness',
     slug: 'wellness',
     children: [
-      {
-        name: 'Weight Management',
-        slug: 'weight-management',
-      },
+      { name: 'Weight Management', slug: 'weight-management' },
     ],
   },
 ];
 
+const productsData = [
+  // ================== CLOTHING ==================
+  {
+    name: "Women's Satin Ruched Midi Dress",
+    slug: 'womens-satin-ruched-midi-dress',
+    description: 'A sophisticated satin midi dress with a flattering ruched silhouette, designed for evening occasions and special events.',
+    details: ['Premium Satin', 'Ruched detailing', 'Midi length', 'Concealed zip fastening'],
+    price: 6500,
+    category: "Women's Clothing",
+    images: [
+      'https://images.unsplash.com/photo-1566174053879-31528523f8ae?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Emerald', colorHex: '#50C878', size: 'S', stock: 15, sku: 'DR-EM-S' },
+      { color: 'Emerald', colorHex: '#50C878', size: 'M', stock: 20, sku: 'DR-EM-M' },
+      { color: 'Black', colorHex: '#000000', size: 'M', stock: 12, sku: 'DR-BK-M' },
+    ],
+    featured: true,
+    newArrival: true,
+  },
+  {
+    name: "Men's Premium Oxford Shirt",
+    slug: 'mens-premium-oxford-shirt',
+    description: 'A versatile Oxford shirt with a relaxed contemporary fit, suitable for both casual and smart-casual looks.',
+    details: ['100% Cotton Oxford', 'Button-down collar', 'Relaxed fit', 'Machine washable'],
+    price: 4500,
+    category: "Men's Clothing",
+    images: [
+      'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Light Blue', colorHex: '#ADD8E6', size: 'M', stock: 10, sku: 'OS-LB-M' },
+      { color: 'Light Blue', colorHex: '#ADD8E6', size: 'L', stock: 18, sku: 'OS-LB-L' },
+      { color: 'White', colorHex: '#FFFFFF', size: 'L', stock: 25, sku: 'OS-WH-L' },
+    ],
+    featured: true,
+    newArrival: false,
+  },
+  {
+    name: 'Girls Floral Summer Dress',
+    slug: 'girls-floral-summer-dress',
+    description: 'A lightweight floral dress designed for comfortable everyday wear and special occasions.',
+    details: ['100% Cotton', 'Floral print', 'Sleeveless', 'A-line shape'],
+    price: 3200,
+    category: "Girls' Clothing",
+    images: [
+      'https://images.unsplash.com/photo-1518831959646-742c3a14ebf7?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Pink', colorHex: '#FFC0CB', size: '4Y', stock: 5, sku: 'GD-PK-4Y' },
+      { color: 'Pink', colorHex: '#FFC0CB', size: '6Y', stock: 8, sku: 'GD-PK-6Y' },
+    ],
+    featured: false,
+    newArrival: true,
+  },
+  {
+    name: 'Boys Casual Polo Set',
+    slug: 'boys-casual-polo-set',
+    description: 'Comfortable two-piece polo and shorts set designed for everyday wear.',
+    details: ['Cotton blend', 'Polo shirt', 'Matching shorts', 'Elastic waistband'],
+    price: 3500,
+    category: "Boys' Clothing",
+    images: [
+      'https://images.unsplash.com/photo-1519238263530-99bdd11df2ea?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Navy', colorHex: '#000080', size: '4Y', stock: 6, sku: 'BP-NV-4Y' },
+      { color: 'Navy', colorHex: '#000080', size: '8Y', stock: 10, sku: 'BP-NV-8Y' },
+    ],
+    featured: false,
+    newArrival: false,
+  },
+
+  // ================== WIGS & HAIR ==================
+  {
+    name: 'Brazilian Body Wave Lace Front',
+    slug: 'brazilian-body-wave-lace-front',
+    description: 'Premium human hair wig with a natural body wave texture and invisible lace front.',
+    details: ['100% Human Hair', '13x4 Lace Front', 'Pre-plucked hairline', 'Can be dyed and bleached'],
+    price: 15000,
+    category: "Wigs & Hair",
+    images: [
+      'https://images.unsplash.com/photo-1519699047748-de8e457a634e?q=80&w=800&auto=format&fit=crop',
+    ],
+    variants: [
+      { color: 'Natural Black', colorHex: '#1B1B1B', size: '18"', stock: 6, sku: 'WG-BW-18' },
+      { color: 'Natural Black', colorHex: '#1B1B1B', size: '22"', stock: 4, sku: 'WG-BW-22' },
+    ],
+    featured: true,
+    newArrival: true,
+  },
+
+  // ================== PAJAMAS ==================
+  {
+    name: "Women's Silk Sleepwear Set",
+    slug: 'womens-silk-sleepwear-set',
+    description: 'Luxurious two-piece silk pajama set for comfortable and stylish lounging.',
+    details: ['100% Mulberry Silk', 'Button-up top', 'Drawstring pants', 'Hypoallergenic'],
+    price: 7500,
+    category: "Women's Pajamas",
+    images: [
+      'https://images.unsplash.com/photo-1766056278825-55168658f120?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8d29tZW5zJTIwc2lsayUyMHNsZWVwd2VhcnxlbnwwfHwwfHx8MA%3D%3D'
+    ],
+    variants: [
+      { color: 'Champagne', colorHex: '#F7E7CE', size: 'S', stock: 12, sku: 'PJ-WP-S' },
+      { color: 'Champagne', colorHex: '#F7E7CE', size: 'M', stock: 15, sku: 'PJ-WP-M' },
+    ],
+    featured: false,
+    newArrival: false,
+  },
+  {
+    name: "Men's Classic Cotton Pajama Set",
+    slug: 'mens-classic-cotton-pajama-set',
+    description: 'Breathable and comfortable cotton pajama set for men.',
+    details: ['100% Cotton', 'Classic fit', 'Chest pocket', 'Button fly'],
+    price: 4000,
+    category: "Men's Pajamas",
+    images: [
+      'https://plus.unsplash.com/premium_photo-1708275672426-7297a81c1306?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NXx8bWVucyUyMGNvdHRvbiUyMHB5amFtYXxlbnwwfHwwfHx8MA%3D%3D'
+    ],
+    variants: [
+      { color: 'Navy', colorHex: '#000080', size: 'M', stock: 20, sku: 'PJ-MP-M' },
+      { color: 'Navy', colorHex: '#000080', size: 'L', stock: 20, sku: 'PJ-MP-L' },
+    ],
+    featured: false,
+    newArrival: false,
+  },
+  {
+    name: 'Girls Printed Pajamas',
+    slug: 'girls-printed-pajamas',
+    description: 'Cute and comfortable printed pajama set for girls.',
+    details: ['Cotton blend', 'Fun print', 'Ribbed cuffs'],
+    price: 2500,
+    category: "Girls' Pajamas",
+    images: [
+      'https://images.unsplash.com/photo-1787688232703-3d336b634683?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8Z2lybHMlMjBwcmludGVkJTIwcHlqYW1hfGVufDB8fDB8fHww'
+    ],
+    variants: [
+      { color: 'Pink', colorHex: '#FFC0CB', size: '6Y', stock: 15, sku: 'PJ-GP-6Y' },
+      { color: 'Pink', colorHex: '#FFC0CB', size: '8Y', stock: 10, sku: 'PJ-GP-8Y' },
+    ],
+    featured: false,
+    newArrival: true,
+  },
+  {
+    name: 'Boys Superhero Pajamas',
+    slug: 'boys-superhero-pajamas',
+    description: 'Comfortable superhero-themed pajama set for boys.',
+    details: ['Cotton blend', 'Superhero print', 'Snug fit'],
+    price: 2500,
+    category: "Boys' Pajamas",
+    images: [
+      'https://images.unsplash.com/photo-1519689680058-324335c77eba?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Blue', colorHex: '#0000FF', size: '6Y', stock: 12, sku: 'PJ-BP-6Y' },
+      { color: 'Blue', colorHex: '#0000FF', size: '10Y', stock: 8, sku: 'PJ-BP-10Y' },
+    ],
+    featured: false,
+    newArrival: false,
+  },
+
+  // ================== HANDBAGS ==================
+  {
+    name: 'Leather Crossbody Bag',
+    slug: 'leather-crossbody-bag',
+    description: 'Elegant genuine leather crossbody bag perfect for everyday use.',
+    details: ['Genuine Leather', 'Adjustable strap', 'Gold-tone hardware', 'Interior zip pocket'],
+    price: 8500,
+    category: 'Handbags',
+    images: [
+      'https://images.unsplash.com/photo-1591561954557-26941169b49e?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Black', colorHex: '#000000', size: null, stock: 5, sku: 'HB-CB-BLK' },
+      { color: 'Tan', colorHex: '#D2B48C', size: null, stock: 8, sku: 'HB-CB-TAN' },
+    ],
+    featured: true,
+    newArrival: true,
+  },
+
+  // ================== SHOES ==================
+  {
+    name: "Women's Classic Pumps",
+    slug: 'womens-classic-pumps',
+    description: 'Timeless pointed-toe pumps suitable for office and formal wear.',
+    details: ['Faux Suede', '3-inch heel', 'Cushioned insole'],
+    price: 4500,
+    category: "Women's Shoes",
+    images: [
+      'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Black', colorHex: '#000000', size: '37', stock: 10, sku: 'SH-WP-37' },
+      { color: 'Black', colorHex: '#000000', size: '38', stock: 8, sku: 'SH-WP-38' },
+    ],
+    featured: false,
+    newArrival: false,
+  },
+  {
+    name: "Men's Leather Loafers",
+    slug: 'mens-leather-loafers',
+    description: 'Comfortable slip-on leather loafers for a smart-casual look.',
+    details: ['Genuine Leather', 'Slip-on style', 'Rubber sole'],
+    price: 6500,
+    category: "Men's Shoes",
+    images: [
+      'https://images.unsplash.com/photo-1784822041007-a2083ecb1b37?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTF8fG1lbnMlMjBsb2FmZXJzfGVufDB8fDB8fHww'
+    ],
+    variants: [
+      { color: 'Tan', colorHex: '#D2B48C', size: '42', stock: 10, sku: 'SH-ML-42' },
+      { color: 'Tan', colorHex: '#D2B48C', size: '43', stock: 12, sku: 'SH-ML-43' },
+    ],
+    featured: true,
+    newArrival: false,
+  },
+  {
+    name: 'Girls Sparkle Sneakers',
+    slug: 'girls-sparkle-sneakers',
+    description: 'Fun and sparkly sneakers with easy hook-and-loop closure.',
+    details: ['Sparkle finish', 'Hook-and-loop strap', 'Padded collar'],
+    price: 3000,
+    category: "Girls' Shoes",
+    images: [
+      'https://images.unsplash.com/photo-1514989940723-e8e51635b782?q=80&w=800&auto=format&fit=crop'
+    ],
+    variants: [
+      { color: 'Pink', colorHex: '#FFC0CB', size: '30', stock: 12, sku: 'SH-GS-30' },
+      { color: 'Pink', colorHex: '#FFC0CB', size: '32', stock: 8, sku: 'SH-GS-32' },
+    ],
+    featured: false,
+    newArrival: true,
+  },
+  {
+    name: 'Boys Running Shoes',
+    slug: 'boys-running-shoes',
+    description: 'Lightweight and durable running shoes for active boys.',
+    details: ['Breathable mesh', 'Durable sole', 'Lace-up'],
+    price: 3500,
+    category: "Boys' Shoes",
+    images: [
+      'https://images.unsplash.com/photo-1620790458588-c6c4a0d68a84?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjB8fGJveXMlMjBydW5uaW5nJTIwc2hvZXN8ZW58MHx8MHx8fDA%3D'
+    ],
+    variants: [
+      { color: 'Blue', colorHex: '#0000FF', size: '32', stock: 15, sku: 'SH-BS-32' },
+      { color: 'Blue', colorHex: '#0000FF', size: '34', stock: 10, sku: 'SH-BS-34' },
+    ],
+    featured: false,
+    newArrival: false,
+  },
+
+  // ================== WELLNESS ==================
+  {
+    name: 'Detox Tea Blend',
+    slug: 'detox-tea-blend',
+    description: 'A natural herbal tea blend to support weight management and wellness.',
+    details: ['Organic ingredients', '28-day supply', 'Caffeine-free', 'Promotes healthy digestion'],
+    price: 2500,
+    category: 'Weight Management',
+    images: [
+      'https://images.unsplash.com/photo-1596344084757-b83f2081da8b?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZGV0b3glMjB0ZWElMjBibGVuZHxlbnwwfHwwfHx8MA%3D%3D'
+    ],
+    variants: [
+      { color: null, colorHex: null, size: null, stock: 50, sku: 'WL-DT-28' },
+    ],
+    featured: true,
+    newArrival: true,
+  }
+];
+
 async function main() {
   console.log('Starting HBS Wear database seed...');
+  console.log('Clearing existing data deterministically...');
 
-  // =========================================================
-  // CREATE CATEGORIES
-  // =========================================================
+  // 1. SAFELY CLEAR EXISTING DATA
+  // 1. SAFELY CLEAR EXISTING DATA
+  await prisma.$transaction([
+    prisma.productVariant.deleteMany({}),
+    prisma.productImage.deleteMany({}),
+    prisma.product.deleteMany({}),
+    prisma.category.deleteMany({ where: { parentId: { not: null } } }),
+    prisma.category.deleteMany({ where: { parentId: null } }),
+  ]);
+  console.log('Existing data cleared. Seeding real HBS Wear catalogue...');
 
+  // 2. CREATE CATEGORIES
   const categoryMap = new Map<string, string>();
 
-  for (const categoryData of categories) {
-    const parent = await prisma.category.upsert({
-      where: {
-        slug: categoryData.slug,
-      },
-      update: {
-        name: categoryData.name,
-      },
-      create: {
-        name: categoryData.name,
-        slug: categoryData.slug,
-      },
+  for (const categoryData of categoriesData) {
+    const parent = await prisma.category.create({
+      data: { name: categoryData.name, slug: categoryData.slug },
     });
-
     categoryMap.set(categoryData.name, parent.id);
 
     for (const childData of categoryData.children) {
-      const child = await prisma.category.upsert({
-        where: {
-          slug: childData.slug,
-        },
-        update: {
-          name: childData.name,
-          parentId: parent.id,
-        },
-        create: {
-          name: childData.name,
-          slug: childData.slug,
-          parentId: parent.id,
-        },
+      const child = await prisma.category.create({
+        data: { name: childData.name, slug: childData.slug, parentId: parent.id },
       });
-
       categoryMap.set(childData.name, child.id);
     }
   }
 
-  // =========================================================
-  // CREATE PRODUCTS
-  // =========================================================
+  // 3. CREATE PRODUCTS
+  let productsCreated = 0;
+  let variantsCreated = 0;
 
-  for (const productData of products) {
+  for (const productData of productsData) {
     const categoryId = categoryMap.get(productData.category);
 
     if (!categoryId) {
-      throw new Error(
-        `Category "${productData.category}" was not found for product "${productData.name}".`
-      );
+      throw new Error(`Category "${productData.category}" was not found for product "${productData.name}".`);
     }
 
-    const product = await prisma.product.upsert({
-      where: {
-        slug: productData.slug,
-      },
-      update: {
-        name: productData.name,
-        description: productData.description,
-        price: productData.price,
-        featured: productData.featured,
-        newArrival: productData.newArrival,
-        categoryId,
-      },
-      create: {
+    const product = await prisma.product.create({
+      data: {
         name: productData.name,
         slug: productData.slug,
         description: productData.description,
+        details: productData.details,
         price: productData.price,
         featured: productData.featured,
         newArrival: productData.newArrival,
@@ -617,59 +379,44 @@ async function main() {
       },
     });
 
-    // ---------------------------------------------------------
-    // Images
-    // ---------------------------------------------------------
-
-    // Remove existing images for this product so re-running
-    // the seed never creates duplicates.
-    await prisma.productImage.deleteMany({
-      where: {
-        productId: product.id,
-      },
-    });
-
+    // 4. CREATE IMAGES
+    const imageRecords = productData.images.map((imageUrl, index) => ({
+      productId: product.id,
+      imageUrl,
+      displayOrder: index,
+    }));
     await prisma.productImage.createMany({
-      data: productData.images.map((imageUrl, index) => ({
-        productId: product.id,
-        imageUrl,
-        displayOrder: index,
-      })),
+      data: imageRecords,
     });
 
-    // ---------------------------------------------------------
-    // Variants
-    // ---------------------------------------------------------
-
+    // 5. CREATE VARIANTS
     for (const variantData of productData.variants) {
-      await prisma.productVariant.upsert({
-        where: {
-          sku: variantData.sku,
-        },
-        update: {
-          color: variantData.color,
-          size: variantData.size,
-          stock: variantData.stock,
-          productId: product.id,
-        },
-        create: {
+      await prisma.productVariant.create({
+        data: {
           productId: product.id,
           color: variantData.color,
+          colorHex: variantData.colorHex,
           size: variantData.size,
           stock: variantData.stock,
           sku: variantData.sku,
         },
       });
+      variantsCreated++;
     }
+
+    productsCreated++;
   }
 
-  console.log(`Seeded ${products.length} HBS Wear products.`);
-  console.log('HBS Wear database seed completed successfully.');
+  console.log(`\nSeed Summary:`);
+  console.log(`- Categories (Root + Sub): ${categoriesData.length + categoriesData.reduce((acc, cat) => acc + cat.children.length, 0)}`);
+  console.log(`- Products: ${productsCreated}`);
+  console.log(`- Variants: ${variantsCreated}`);
+  console.log('\nHBS Wear database seed completed successfully. 🌱');
 }
 
 main()
   .catch((error) => {
-    console.error('Seed failed:', error);
+    console.error('\n❌ Seed failed:', error);
     process.exit(1);
   })
   .finally(async () => {

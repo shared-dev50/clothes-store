@@ -9,9 +9,12 @@ interface ProductCardProps {
 export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const [isHovered, setIsHovered] = useState(false);
 
-  const displayImage = isHovered && product.images.length > 1 
-    ? product.images[1] 
-    : product.images[0];
+  const hasImages = Array.isArray(product.images) && product.images.length > 0;
+  const hasMultipleImages = hasImages && product.images.length > 1;
+
+  const displayImage = hasImages
+    ? (isHovered && hasMultipleImages ? product.images[1] : product.images[0])
+    : undefined;
 
   return (
     <div 
@@ -19,12 +22,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <Link to={`/product/${product.slug}`} className="relative aspect-[4/5] overflow-hidden bg-brand-stone/30 mb-4">
-        <img
-          src={displayImage}
-          alt={product.name}
-          className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-105"
-        />
+      <Link to={`/product/${product.slug}`} className="relative aspect-[4/5] overflow-hidden bg-brand-stone/30 mb-4 block">
+        {displayImage ? (
+          <img
+            src={displayImage}
+            alt={product.name}
+            className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-brand-stone/10 text-brand-taupe/50 text-xs font-medium uppercase tracking-widest">
+            No Image
+          </div>
+        )}
         
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col gap-2">

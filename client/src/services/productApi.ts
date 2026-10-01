@@ -1,33 +1,41 @@
 import type { Product } from '../types';
-import { mockProducts } from '../data/mockProducts';
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export const getProducts = async (category?: string): Promise<Product[]> => {
-  await delay(500);
+  let url = `${API_URL}/products`;
   if (category && category !== 'All') {
-    return mockProducts.filter((p) => p.category === category);
+    url += `?category=${encodeURIComponent(category)}`;
   }
-  return mockProducts;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch products');
+  return response.json();
 };
 
 export const getProductById = async (idOrSlug: string): Promise<Product | undefined> => {
-  await delay(400);
-  return mockProducts.find((p) => p.id === idOrSlug || p.slug === idOrSlug);
+  const response = await fetch(`${API_URL}/products/${encodeURIComponent(idOrSlug)}`);
+  if (!response.ok) {
+    if (response.status === 404) return undefined;
+    throw new Error('Failed to fetch product');
+  }
+  return response.json();
 };
 
 export const getFeaturedProducts = async (): Promise<Product[]> => {
-  await delay(300);
-  return mockProducts.filter((p) => p.featured);
+  const response = await fetch(`${API_URL}/products?featured=true`);
+  if (!response.ok) throw new Error('Failed to fetch featured products');
+  return response.json();
 };
 
 export const getNewArrivals = async (): Promise<Product[]> => {
-  await delay(300);
-  return mockProducts.filter((p) => p.newArrival);
+  const response = await fetch(`${API_URL}/products?newArrival=true`);
+  if (!response.ok) throw new Error('Failed to fetch new arrivals');
+  return response.json();
 };
 
 export const getCategories = async (): Promise<string[]> => {
-  await delay(200);
-  const categories = new Set(mockProducts.map((p) => p.category));
-  return ['All', ...Array.from(categories)];
+  const response = await fetch(`${API_URL}/categories`);
+  if (!response.ok) throw new Error('Failed to fetch categories');
+  const categories: string[] = await response.json();
+  return categories.includes('All') ? categories : ['All', ...categories];
 };

@@ -48,7 +48,7 @@ const mapProductToFrontend = (dbProduct: ProductWithRelations): ProductDTO => {
     if (v.color && !uniqueColorsMap.has(v.color)) {
       uniqueColorsMap.set(v.color, {
         name: v.color,
-        hex: HEX_MAP[v.color] || '#000000',
+        hex: v.colorHex || HEX_MAP[v.color] || '#000000',
       });
     }
   });
@@ -58,8 +58,8 @@ const mapProductToFrontend = (dbProduct: ProductWithRelations): ProductDTO => {
     name: dbProduct.name,
     slug: dbProduct.slug,
     description: dbProduct.description,
-    details: [],
-    price: dbProduct.price,
+    details: dbProduct.details,
+    price: Number(dbProduct.price),
     category: dbProduct.category.name,
     images,
     colors: Array.from(uniqueColorsMap.values()),
