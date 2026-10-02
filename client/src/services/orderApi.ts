@@ -52,3 +52,39 @@ export const getOrder = async (orderNumber: string) => {
 
   return response.json();
 };
+
+export const initiateMpesa = async (orderNumber: string, phoneNumber: string) => {
+  const response = await fetch(`${API_URL}/payments/mpesa/stk-push`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ orderNumber, phoneNumber })
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to initiate M-Pesa payment');
+  }
+  return response.json();
+};
+
+export const createStripePayment = async (orderNumber: string) => {
+  const response = await fetch(`${API_URL}/payments/stripe/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ orderNumber })
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to create Stripe payment');
+  }
+  return response.json();
+};
+
+export const getPaymentStatus = async (orderNumber: string) => {
+  const response = await fetch(`${API_URL}/payments/order/${orderNumber}/status`, {
+    headers: getAuthHeaders()
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch payment status');
+  }
+  return response.json();
+};
