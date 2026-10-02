@@ -66,7 +66,8 @@ model ProductVariant {
   colorHex  String?
   size      String?
   price     Float?
-  stock     Int     @default(0)
+  stock         Int     @default(0)
+  reservedStock Int     @default(0)
   sku       String  @unique
 
   product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -125,6 +126,7 @@ model Order {
   total           Decimal       @db.Decimal(10, 2)
   status          OrderStatus   @default(PENDING_PAYMENT)
   paymentStatus   PaymentStatus @default(UNPAID)
+  expiresAt       DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

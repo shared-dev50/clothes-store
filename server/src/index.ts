@@ -33,8 +33,13 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 
+import { startOrderExpiryJob } from './jobs/expireOrders';
+
 // Error Handling
 app.use(errorHandler);
+
+// Start order expiry job
+startOrderExpiryJob();
 
 // Start server
 app.listen(PORT, () => {

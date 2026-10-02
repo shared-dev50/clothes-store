@@ -180,22 +180,58 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
           }
         });
 
-        await tx.order.update({
+        const order = await tx.order.update({
           where: { id: payment.orderId },
           data: {
             paymentStatus: 'PAID',
             status: 'PROCESSING'
-          }
+          },
+          include: { items: true }
         });
+
+        for (const item of order.items) {
+          if (item.variantId) {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: {
+                stock: { decrement: item.quantity },
+                reservedStock: { decrement: item.quantity }
+              }
+            });
+          }
+        }
       });
     } else {
       // Failed or cancelled
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentModelStatus.FAILED,
-          failureReason: ResultDesc,
-          metadata: callbackData
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentModelStatus.FAILED,
+            failureReason: ResultDesc,
+            metadata: callbackData
+          }
+        });
+
+        const order = await tx.order.findUnique({
+          where: { id: payment.orderId },
+          include: { items: true }
+        });
+
+        if (order && order.status === 'PENDING_PAYMENT') {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { status: 'CANCELLED' }
+          });
+
+          for (const item of order.items) {
+            if (item.variantId) {
+              await tx.productVariant.update({
+                where: { id: item.variantId },
+                data: { reservedStock: { decrement: item.quantity } }
+              });
+            }
+          }
         }
       });
     }
@@ -305,13 +341,26 @@ export const stripeWebhook = async (req: Request, res: Response): Promise<void> 
             }
           });
 
-          await tx.order.update({
+          const order = await tx.order.update({
             where: { id: payment.orderId },
             data: {
               paymentStatus: 'PAID',
               status: 'PROCESSING'
-            }
+            },
+            include: { items: true }
           });
+
+          for (const item of order.items) {
+            if (item.variantId) {
+              await tx.productVariant.update({
+                where: { id: item.variantId },
+                data: {
+                  stock: { decrement: item.quantity },
+                  reservedStock: { decrement: item.quantity }
+                }
+              });
+            }
+          }
         });
       }
     } else if (event.type === 'payment_intent.payment_failed') {
@@ -321,12 +370,35 @@ export const stripeWebhook = async (req: Request, res: Response): Promise<void> 
       });
 
       if (payment && payment.status === PaymentModelStatus.PENDING) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: {
-            status: PaymentModelStatus.FAILED,
-            failureReason: paymentIntent.last_payment_error?.message,
-            metadata: paymentIntent as any
+        await prisma.$transaction(async (tx) => {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: PaymentModelStatus.FAILED,
+              failureReason: paymentIntent.last_payment_error?.message,
+              metadata: paymentIntent as any
+            }
+          });
+
+          const order = await tx.order.findUnique({
+            where: { id: payment.orderId },
+            include: { items: true }
+          });
+
+          if (order && order.status === 'PENDING_PAYMENT') {
+            await tx.order.update({
+              where: { id: order.id },
+              data: { status: 'CANCELLED' }
+            });
+
+            for (const item of order.items) {
+              if (item.variantId) {
+                await tx.productVariant.update({
+                  where: { id: item.variantId },
+                  data: { reservedStock: { decrement: item.quantity } }
+                });
+              }
+            }
           }
         });
       }

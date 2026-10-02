@@ -31,17 +31,17 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
           if (!dbVariant) {
             throw new Error(`Variant not found`);
           }
-          if (dbVariant.stock < quantity) {
+          if (dbVariant.stock - dbVariant.reservedStock < quantity) {
              throw new Error(`Insufficient stock for ${dbVariant.product.name}`);
           }
           
-          // Atomically decrement stock and check if it went below 0 (prevents race conditions)
+          // Atomically reserve stock and check if it went below 0
           const updatedVariant = await tx.productVariant.update({
             where: { id: dbVariant.id },
-            data: { stock: { decrement: quantity } }
+            data: { reservedStock: { increment: quantity } }
           });
 
-          if (updatedVariant.stock < 0) {
+          if (updatedVariant.stock - updatedVariant.reservedStock < 0) {
             throw new Error(`Insufficient stock for ${dbVariant.product.name} due to concurrent order`);
           }
           
@@ -83,6 +83,7 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
           total,
           status: 'PENDING_PAYMENT',
           paymentStatus: 'UNPAID',
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes from now
           items: {
             create: orderItemsData
           }

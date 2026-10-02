@@ -16,9 +16,12 @@ router.put('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 
 import { getAdminOrders, getAdminOrderById, updateOrderStatus } from '../controllers/orderController';
+import { getCloudinarySignature } from '../controllers/uploadController';
 
 router.get('/orders', getAdminOrders);
 router.get('/orders/:id', getAdminOrderById);
 router.put('/orders/:id/status', updateOrderStatus);
+
+router.post('/uploads/cloudinary/signature', getCloudinarySignature);
 
 export default router;
