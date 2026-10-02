@@ -1,14 +1,15 @@
 import React from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Search } from 'lucide-react';
+import { ShoppingBag, Menu, X, Search, User } from 'lucide-react';
 import { useCartStore } from '../../store/cartStore';
 import { useUiStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 
 export const Navbar: React.FC = () => {
   const { isMenuOpen, setMenuOpen, toggleMenu } = useUiStore();
   const itemCount = useCartStore((state) => state.itemCount);
-
-
+  const { isAuthenticated, user, logout } = useAuthStore();
+  const [isAuthMenuOpen, setIsAuthMenuOpen] = React.useState(false);
 
   const navLinks = [
     { name: 'Shop', path: '/shop' },
@@ -63,6 +64,63 @@ export const Navbar: React.FC = () => {
             <button className="text-brand-black hover:text-brand-taupe hidden sm:block p-2">
               <Search size={20} strokeWidth={1.5} />
             </button>
+            
+            <div className="relative">
+              <button 
+                className="text-brand-black hover:text-brand-taupe p-2"
+                onClick={() => setIsAuthMenuOpen(!isAuthMenuOpen)}
+              >
+                <User size={20} strokeWidth={1.5} />
+              </button>
+              
+              {isAuthMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-brand-white border border-brand-stone shadow-xl py-2 z-50">
+                  {isAuthenticated() ? (
+                    <>
+                      <div className="px-4 py-2 border-b border-brand-stone/50 text-xs text-brand-taupe truncate">
+                        {user?.email}
+                      </div>
+                      {user?.role === 'ADMIN' && (
+                        <Link 
+                          to="/admin" 
+                          className="block px-4 py-2 text-sm text-brand-black hover:bg-brand-stone/20"
+                          onClick={() => setIsAuthMenuOpen(false)}
+                        >
+                          Admin Dashboard
+                        </Link>
+                      )}
+                      <button
+                        onClick={() => {
+                          logout();
+                          setIsAuthMenuOpen(false);
+                        }}
+                        className="block w-full text-left px-4 py-2 text-sm text-brand-black hover:bg-brand-stone/20"
+                      >
+                        Logout
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link 
+                        to="/login" 
+                        className="block px-4 py-2 text-sm text-brand-black hover:bg-brand-stone/20"
+                        onClick={() => setIsAuthMenuOpen(false)}
+                      >
+                        Log In
+                      </Link>
+                      <Link 
+                        to="/register" 
+                        className="block px-4 py-2 text-sm text-brand-black hover:bg-brand-stone/20"
+                        onClick={() => setIsAuthMenuOpen(false)}
+                      >
+                        Sign Up
+                      </Link>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             <Link to="/cart" className="text-brand-black hover:text-brand-taupe relative p-2">
               <ShoppingBag size={20} strokeWidth={1.5} />
               {itemCount > 0 && (

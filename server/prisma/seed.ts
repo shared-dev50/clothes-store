@@ -411,6 +411,35 @@ async function main() {
   console.log(`- Categories (Root + Sub): ${categoriesData.length + categoriesData.reduce((acc, cat) => acc + cat.children.length, 0)}`);
   console.log(`- Products: ${productsCreated}`);
   console.log(`- Variants: ${variantsCreated}`);
+  // 6. SETUP INITIAL ADMIN
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (adminEmail && adminPassword) {
+    const existingAdmin = await prisma.user.findUnique({
+      where: { email: adminEmail }
+    });
+
+    if (!existingAdmin) {
+      const bcrypt = require('bcryptjs');
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(adminPassword, salt);
+      
+      await prisma.user.create({
+        data: {
+          email: adminEmail,
+          passwordHash,
+          role: 'ADMIN',
+        },
+      });
+      console.log(`- Admin account created: ${adminEmail}`);
+    } else {
+      console.log(`- Admin account already exists: ${adminEmail}`);
+    }
+  } else {
+    console.log('- Skipped admin creation (ADMIN_EMAIL or ADMIN_PASSWORD missing)');
+  }
+
   console.log('\nHBS Wear database seed completed successfully. 🌱');
 }
 

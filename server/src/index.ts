@@ -16,10 +16,17 @@ const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 app.use(cors({ origin: CLIENT_URL }));
 app.use(express.json());
 
+import authRoutes from './routes/authRoutes';
+import adminRoutes from './routes/adminRoutes';
+import orderRoutes from './routes/orderRoutes';
+
 // Routes
 app.use('/api/health', healthRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
 
 // Error Handling
 app.use(errorHandler);

@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCartStore } from '../store/cartStore';
-import { ArrowLeft, CheckCircle, CreditCard, Smartphone } from 'lucide-react';
+import { ArrowLeft, CreditCard, Smartphone } from 'lucide-react';
+import { createOrder } from '../services/orderApi';
+import { useAuthStore } from '../store/authStore';
 
 export const Checkout: React.FC = () => {
   const { cart, subtotal, clearCart } = useCartStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    email: '',
+    email: user?.email || '',
     firstName: '',
     lastName: '',
     address: '',
@@ -30,53 +33,40 @@ export const Checkout: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleProcessOrder = () => {
+  const handleProcessOrder = async () => {
     setIsProcessing(true);
-    // Simulate network delay / M-Pesa STK push wait
-    setTimeout(() => {
-      setIsProcessing(false);
-      setIsSuccess(true);
+    setError(null);
+    try {
+      const payload = {
+        customerName: `${formData.firstName} ${formData.lastName}`.trim(),
+        customerEmail: formData.email,
+        customerPhone: formData.phone,
+        deliveryAddress: `${formData.address} ${formData.apartment}`.trim(),
+        county: formData.city,
+        items: cart.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity
+        }))
+      };
+
+      const order = await createOrder(payload);
+      
       clearCart();
-    }, 3000);
+      navigate(`/order-confirmation/${order.orderNumber}`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to place order. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  if (cart.length === 0 && !isSuccess) {
+  if (cart.length === 0) {
     navigate('/cart');
     return null;
   }
 
-  if (isSuccess) {
-    return (
-      <div className="w-full max-w-3xl mx-auto px-4 py-24 text-center flex flex-col items-center">
-        <CheckCircle size={64} className="text-brand-gold mb-6" />
-        <h1 className="text-4xl font-display uppercase tracking-widest mb-4">Order Confirmed</h1>
-        <p className="text-brand-taupe mb-2">Thank you for your purchase, {formData.firstName}.</p>
-        <p className="text-brand-taupe mb-8">Your order #NAI-{Math.floor(10000 + Math.random() * 90000)} is being processed.</p>
-
-        <div className="bg-brand-stone/10 p-8 w-full max-w-md text-left mb-8 border border-brand-stone/30">
-          <h3 className="text-sm font-semibold uppercase tracking-widest mb-4 border-b border-brand-stone/30 pb-2">Order Details</h3>
-          <div className="space-y-2 text-sm text-brand-black mb-6">
-            <p className="flex justify-between"><span className="text-brand-taupe">Total paid:</span> KES {total.toLocaleString()}</p>
-            <p className="flex justify-between"><span className="text-brand-taupe">Payment:</span> {paymentMethod === 'mpesa' ? 'M-Pesa' : 'Card'}</p>
-          </div>
-          <h3 className="text-sm font-semibold uppercase tracking-widest mb-4 border-b border-brand-stone/30 pb-2">Delivery Address</h3>
-          <div className="text-sm text-brand-black space-y-1">
-            <p>{formData.firstName} {formData.lastName}</p>
-            <p>{formData.address} {formData.apartment}</p>
-            <p>{formData.city}, Kenya</p>
-            <p>{formData.phone}</p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => navigate('/shop')}
-          className="px-8 py-4 bg-brand-black text-brand-white text-sm font-semibold uppercase tracking-widest hover:bg-brand-black/90 transition-colors"
-        >
-          Continue Shopping
-        </button>
-      </div>
-    );
-  }
+  // isSuccess removed in favor of navigating to order-confirmation page
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
@@ -219,6 +209,12 @@ export const Checkout: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {error && (
+                <div className="bg-red-50 text-red-600 p-4 rounded text-sm border border-red-200">
+                  {error}
+                </div>
+              )}
 
               <div className="flex justify-between items-center pt-4">
                 <button onClick={() => setStep(1)} className="text-xs uppercase tracking-widest hover:underline flex items-center gap-1">

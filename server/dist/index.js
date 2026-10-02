@@ -17,8 +17,12 @@ const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 // Middleware
 app.use((0, cors_1.default)({ origin: CLIENT_URL }));
 app.use(express_1.default.json());
+const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
+const adminRoutes_1 = __importDefault(require("./routes/adminRoutes"));
 // Routes
 app.use('/api/health', healthRoutes_1.default);
+app.use('/api/auth', authRoutes_1.default);
+app.use('/api/admin', adminRoutes_1.default);
 app.use('/api/categories', categoryRoutes_1.default);
 app.use('/api/products', productRoutes_1.default);
 // Error Handling
