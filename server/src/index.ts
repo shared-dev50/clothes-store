@@ -12,6 +12,14 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
+// Cloudinary Configuration Validation
+const requiredCloudinaryEnv = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
+const missingCloudinaryEnv = requiredCloudinaryEnv.filter(key => !process.env[key]);
+if (missingCloudinaryEnv.length > 0) {
+  console.warn(`\n⚠️ WARNING: Cloudinary configuration is missing: ${missingCloudinaryEnv.join(', ')}.`);
+  console.warn(`Product image uploads will fail until these are added to the server/.env file.\n`);
+}
+
 // Middleware
 app.use(cors({ origin: CLIENT_URL }));
 // Mount stripe webhook BEFORE express.json() so it can use express.raw()

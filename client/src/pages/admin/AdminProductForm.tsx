@@ -6,7 +6,8 @@ import {
   fetchAdminProductById, 
   createAdminProduct, 
   updateAdminProduct,
-  uploadImageToCloudinary
+  getCloudinaryConfig,
+  generateCloudinarySignature
 } from '../../services/adminApi';
 import { ArrowLeft, Plus, Trash2, Upload } from 'lucide-react';
 
@@ -108,31 +109,54 @@ export const AdminProductForm: React.FC = () => {
     setFormData({ ...formData, [field]: newArr });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    setUploadError(null);
-    setUploading(true);
-    
+  const openCloudinaryWidget = async () => {
     try {
-      const newUrls = [...formData.images.filter(i => i.trim() !== '')];
-      for (let i = 0; i < e.target.files.length; i++) {
-        const file = e.target.files[i];
-        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-          throw new Error(`Unsupported file type: ${file.name}. Only JPG, PNG, WEBP are allowed.`);
+      setUploadError(null);
+      setUploading(true);
+      
+      const config = await getCloudinaryConfig();
+      
+      const widget = (window as any).cloudinary.createUploadWidget(
+        {
+          cloudName: config.cloudName,
+          apiKey: config.apiKey,
+          uploadSignature: generateCloudinarySignature,
+          folder: config.folder,
+          cropping: true,
+          croppingAspectRatio: 1, // Square 1:1 crop
+          showSkipCropButton: false,
+          multiple: true,
+          defaultSource: 'local',
+          clientAllowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+          maxFileSize: 5000000,
+        },
+        (error: any, result: any) => {
+          if (!error && result && result.event === "success") {
+            let secureUrl = result.info.secure_url;
+            
+            // Add automatic format and quality optimization if it's a Cloudinary URL
+            if (secureUrl.includes('/upload/')) {
+              secureUrl = secureUrl.replace('/upload/', '/upload/f_auto,q_auto/');
+            }
+            
+            setFormData(prev => {
+              const currentImages = prev.images.filter(i => i.trim() !== '');
+              return { ...prev, images: [...currentImages, secureUrl] };
+            });
+          } else if (error) {
+            setUploadError(error.message || 'Failed to upload image');
+          }
+          
+          if (result && (result.event === "close" || result.event === "abort")) {
+            setUploading(false);
+          }
         }
-        if (file.size > 5 * 1024 * 1024) {
-          throw new Error(`File too large: ${file.name}. Max size is 5MB.`);
-        }
-        
-        const url = await uploadImageToCloudinary(file);
-        newUrls.push(url);
-      }
-      setFormData({ ...formData, images: newUrls });
+      );
+      
+      widget.open();
     } catch (err: any) {
-      setUploadError(err.message || 'Failed to upload images');
-    } finally {
       setUploading(false);
-      e.target.value = '';
+      setUploadError(err.message || 'Failed to initialize upload widget');
     }
   };
 
@@ -291,24 +315,21 @@ export const AdminProductForm: React.FC = () => {
               </div>
             ))}
             
-            <label className={`aspect-square border border-dashed border-brand-stone flex flex-col items-center justify-center cursor-pointer hover:bg-brand-stone/5 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <button
+              type="button"
+              onClick={openCloudinaryWidget}
+              disabled={uploading}
+              className={`aspect-square border border-dashed border-brand-stone flex flex-col items-center justify-center cursor-pointer hover:bg-brand-stone/5 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
               {uploading ? (
                 <div className="w-6 h-6 border-2 border-brand-black border-t-transparent rounded-full animate-spin mb-2" />
               ) : (
                 <Upload size={24} className="text-brand-taupe mb-2" />
               )}
               <span className="text-sm font-medium text-brand-taupe text-center px-2">
-                {uploading ? 'Uploading...' : 'Upload Images'}
+                {uploading ? 'Uploading/Cropping...' : 'Upload Images'}
               </span>
-              <input 
-                type="file" 
-                multiple 
-                accept="image/jpeg, image/png, image/webp" 
-                className="hidden" 
-                onChange={handleFileUpload}
-                disabled={uploading}
-              />
-            </label>
+            </button>
           </div>
           {uploadError && <p className="text-red-500 text-sm">{uploadError}</p>}
           <p className="text-xs text-brand-taupe">Allowed formats: JPG, PNG, WEBP. Max size: 5MB per image.</p>

@@ -79,38 +79,36 @@ export const updateAdminOrderStatus = async (id: string, status: string) => {
   return response.json();
 };
 
-export const uploadImageToCloudinary = async (file: File) => {
-  // 1. Get signature from backend
-  const sigResponse = await fetch(`${API_URL}/admin/uploads/cloudinary/signature`, {
+export const getCloudinaryConfig = async () => {
+  const response = await fetch(`${API_URL}/admin/uploads/cloudinary/signature`, {
     method: 'POST',
     headers: getHeaders(),
+    body: JSON.stringify({}),
   });
   
-  if (!sigResponse.ok) {
-    const err = await sigResponse.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to get upload signature');
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to get Cloudinary config');
   }
+  
+  return response.json();
+};
 
-  const { timestamp, signature, cloudName, apiKey, folder } = await sigResponse.json();
-
-  // 2. Upload to Cloudinary
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('api_key', apiKey);
-  formData.append('timestamp', timestamp);
-  formData.append('signature', signature);
-  formData.append('folder', folder);
-
-  const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!uploadResponse.ok) {
-    const err = await uploadResponse.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'Failed to upload image to Cloudinary');
+export const generateCloudinarySignature = async (callback: Function, paramsToSign: any) => {
+  try {
+    const response = await fetch(`${API_URL}/admin/uploads/cloudinary/signature`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(paramsToSign),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to get signature');
+    }
+    
+    const data = await response.json();
+    callback(data.signature);
+  } catch (err) {
+    console.error('Error generating signature:', err);
   }
-
-  const uploadData = await uploadResponse.json();
-  return uploadData.secure_url;
 };

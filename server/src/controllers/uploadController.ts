@@ -15,24 +15,31 @@ export const getCloudinarySignature = async (req: Request, res: Response): Promi
       return;
     }
 
-    const timestamp = Math.round(new Date().getTime() / 1000);
-    const folder = process.env.CLOUDINARY_FOLDER || 'hbs-wear/products';
+    let paramsToSign = req.body;
     
-    // We can also allow the client to specify a subfolder or id, but folder is sufficient
+    // If no params provided or it's empty, use default timestamp
+    if (!paramsToSign || Object.keys(paramsToSign).length === 0) {
+      paramsToSign = {
+        timestamp: Math.round(new Date().getTime() / 1000)
+      };
+    }
+    
+    // Always enforce our folder if not provided
+    if (!paramsToSign.folder) {
+      paramsToSign.folder = process.env.CLOUDINARY_FOLDER || 'clothing-store/products';
+    }
+
     const signature = cloudinary.utils.api_sign_request(
-      {
-        timestamp,
-        folder,
-      },
+      paramsToSign,
       process.env.CLOUDINARY_API_SECRET
     );
 
     res.json({
-      timestamp,
+      timestamp: paramsToSign.timestamp,
       signature,
       cloudName: process.env.CLOUDINARY_CLOUD_NAME,
       apiKey: process.env.CLOUDINARY_API_KEY,
-      folder,
+      folder: paramsToSign.folder,
     });
   } catch (error) {
     console.error('Error generating Cloudinary signature:', error);
