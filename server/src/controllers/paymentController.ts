@@ -180,24 +180,32 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
           }
         });
 
-        const order = await tx.order.update({
-          where: { id: payment.orderId },
+        const updateResult = await tx.order.updateMany({
+          where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
           data: {
             paymentStatus: 'PAID',
             status: 'PROCESSING'
-          },
-          include: { items: true }
+          }
         });
 
-        for (const item of order.items) {
-          if (item.variantId) {
-            await tx.productVariant.update({
-              where: { id: item.variantId },
-              data: {
-                stock: { decrement: item.quantity },
-                reservedStock: { decrement: item.quantity }
+        if (updateResult.count === 1) {
+          const order = await tx.order.findUnique({
+            where: { id: payment.orderId },
+            include: { items: true }
+          });
+          
+          if (order) {
+            for (const item of order.items) {
+              if (item.variantId) {
+                await tx.productVariant.update({
+                  where: { id: item.variantId },
+                  data: {
+                    stock: { decrement: item.quantity },
+                    reservedStock: { decrement: item.quantity }
+                  }
+                });
               }
-            });
+            }
           }
         }
       });
@@ -213,23 +221,25 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
           }
         });
 
-        const order = await tx.order.findUnique({
-          where: { id: payment.orderId },
-          include: { items: true }
+        const updateResult = await tx.order.updateMany({
+          where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
+          data: { status: 'CANCELLED' }
         });
 
-        if (order && order.status === 'PENDING_PAYMENT') {
-          await tx.order.update({
-            where: { id: order.id },
-            data: { status: 'CANCELLED' }
+        if (updateResult.count === 1) {
+          const order = await tx.order.findUnique({
+            where: { id: payment.orderId },
+            include: { items: true }
           });
-
-          for (const item of order.items) {
-            if (item.variantId) {
-              await tx.productVariant.update({
-                where: { id: item.variantId },
-                data: { reservedStock: { decrement: item.quantity } }
-              });
+          
+          if (order) {
+            for (const item of order.items) {
+              if (item.variantId) {
+                await tx.productVariant.update({
+                  where: { id: item.variantId },
+                  data: { reservedStock: { decrement: item.quantity } }
+                });
+              }
             }
           }
         }
@@ -341,24 +351,32 @@ export const stripeWebhook = async (req: Request, res: Response): Promise<void> 
             }
           });
 
-          const order = await tx.order.update({
-            where: { id: payment.orderId },
+          const updateResult = await tx.order.updateMany({
+            where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
             data: {
               paymentStatus: 'PAID',
               status: 'PROCESSING'
-            },
-            include: { items: true }
+            }
           });
 
-          for (const item of order.items) {
-            if (item.variantId) {
-              await tx.productVariant.update({
-                where: { id: item.variantId },
-                data: {
-                  stock: { decrement: item.quantity },
-                  reservedStock: { decrement: item.quantity }
+          if (updateResult.count === 1) {
+            const order = await tx.order.findUnique({
+              where: { id: payment.orderId },
+              include: { items: true }
+            });
+            
+            if (order) {
+              for (const item of order.items) {
+                if (item.variantId) {
+                  await tx.productVariant.update({
+                    where: { id: item.variantId },
+                    data: {
+                      stock: { decrement: item.quantity },
+                      reservedStock: { decrement: item.quantity }
+                    }
+                  });
                 }
-              });
+              }
             }
           }
         });
@@ -380,23 +398,25 @@ export const stripeWebhook = async (req: Request, res: Response): Promise<void> 
             }
           });
 
-          const order = await tx.order.findUnique({
-            where: { id: payment.orderId },
-            include: { items: true }
+          const updateResult = await tx.order.updateMany({
+            where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
+            data: { status: 'CANCELLED' }
           });
 
-          if (order && order.status === 'PENDING_PAYMENT') {
-            await tx.order.update({
-              where: { id: order.id },
-              data: { status: 'CANCELLED' }
+          if (updateResult.count === 1) {
+            const order = await tx.order.findUnique({
+              where: { id: payment.orderId },
+              include: { items: true }
             });
 
-            for (const item of order.items) {
-              if (item.variantId) {
-                await tx.productVariant.update({
-                  where: { id: item.variantId },
-                  data: { reservedStock: { decrement: item.quantity } }
-                });
+            if (order) {
+              for (const item of order.items) {
+                if (item.variantId) {
+                  await tx.productVariant.update({
+                    where: { id: item.variantId },
+                    data: { reservedStock: { decrement: item.quantity } }
+                  });
+                }
               }
             }
           }

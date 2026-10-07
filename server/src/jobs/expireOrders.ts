@@ -18,18 +18,16 @@ export const startOrderExpiryJob = () => {
 
       for (const order of expiredOrders) {
         await prisma.$transaction(async (tx) => {
-          // Double check inside transaction
-          const currentOrder = await tx.order.findUnique({
-            where: { id: order.id },
-            select: { status: true, expiresAt: true }
+          const updateResult = await tx.order.updateMany({
+            where: { 
+              id: order.id, 
+              status: 'PENDING_PAYMENT',
+              expiresAt: { lt: new Date() }
+            },
+            data: { status: 'CANCELLED' }
           });
           
-          if (currentOrder && currentOrder.status === 'PENDING_PAYMENT' && currentOrder.expiresAt && currentOrder.expiresAt < new Date()) {
-            await tx.order.update({
-              where: { id: order.id },
-              data: { status: 'CANCELLED' }
-            });
-
+          if (updateResult.count === 1) {
             for (const item of order.items) {
               if (item.variantId) {
                 await tx.productVariant.update({
@@ -38,9 +36,9 @@ export const startOrderExpiryJob = () => {
                 });
               }
             }
+            console.log(`Expired order ${order.orderNumber} and released stock reservations.`);
           }
         });
-        console.log(`Expired order ${order.orderNumber} and released stock reservations.`);
       }
     } catch (error) {
       console.error('Error in order expiry job:', error);
