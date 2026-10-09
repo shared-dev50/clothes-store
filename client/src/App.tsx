@@ -14,6 +14,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminProductForm } from './pages/admin/AdminProductForm';
 import { OrderConfirmation } from './pages/OrderConfirmation';
 import { AdminOrders } from './pages/admin/AdminOrders';
+import { Toaster } from 'react-hot-toast';
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ScrollToTop />
+        <Toaster position="bottom-right" />
         <Routes>
           <Route path="/" element={<MainLayout />}>
             <Route index element={<Home />} />

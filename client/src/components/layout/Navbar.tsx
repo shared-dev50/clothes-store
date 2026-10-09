@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { ShoppingBag, Menu, X, Search, User } from 'lucide-react';
 import { useCartStore } from '../../store/cartStore';
@@ -7,9 +7,35 @@ import { useAuthStore } from '../../store/authStore';
 
 export const Navbar: React.FC = () => {
   const { isMenuOpen, setMenuOpen, toggleMenu } = useUiStore();
-  const itemCount = useCartStore((state) => state.itemCount);
+  const cart = useCartStore((state) => state.cart);
+  const itemCount = cart.reduce((count, item) => count + item.quantity, 0);
   const { isAuthenticated, user, logout } = useAuthStore();
   const [isAuthMenuOpen, setIsAuthMenuOpen] = React.useState(false);
+  const authMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (authMenuRef.current && !authMenuRef.current.contains(event.target as Node)) {
+        setIsAuthMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsAuthMenuOpen(false);
+      }
+    };
+
+    if (isAuthMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isAuthMenuOpen]);
 
   const navLinks = [
     { name: 'Shop', path: '/shop' },
@@ -65,7 +91,7 @@ export const Navbar: React.FC = () => {
               <Search size={20} strokeWidth={1.5} />
             </button>
             
-            <div className="relative">
+            <div className="relative" ref={authMenuRef}>
               <button 
                 className="text-brand-black hover:text-brand-taupe p-2"
                 onClick={() => setIsAuthMenuOpen(!isAuthMenuOpen)}
@@ -124,9 +150,7 @@ export const Navbar: React.FC = () => {
             <Link to="/cart" className="text-brand-black hover:text-brand-taupe relative p-2">
               <ShoppingBag size={20} strokeWidth={1.5} />
               {itemCount > 0 && (
-                <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold leading-none text-brand-white transform translate-x-1/4 -translate-y-1/4 bg-brand-gold rounded-full">
-                  {itemCount}
-                </span>
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-brand-black rounded-full border-[1.5px] border-brand-white shadow-sm"></span>
               )}
             </Link>
           </div>

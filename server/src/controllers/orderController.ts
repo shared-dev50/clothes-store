@@ -63,7 +63,7 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
         }
       }
 
-      const deliveryFee = subtotal > 10000 ? 0 : 300;
+      const deliveryFee = 0; // Temporarily removed: subtotal > 10000 ? 0 : 300;
       const total = subtotal + deliveryFee;
 
       const orderNumber = `NAI-${Math.floor(10000 + Math.random() * 90000)}`;
@@ -75,9 +75,9 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
           customerName,
           customerEmail,
           customerPhone,
-          deliveryAddress,
-          county: county || 'Nairobi',
-          deliveryNotes,
+          deliveryAddress: deliveryAddress || 'N/A',
+          county: county || 'N/A',
+          deliveryNotes: deliveryNotes || '',
           subtotal,
           deliveryFee,
           total,

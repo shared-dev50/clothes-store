@@ -4,16 +4,17 @@ import { useCartStore } from '../store/cartStore';
 import { ArrowLeft, CreditCard, Smartphone } from 'lucide-react';
 import { createOrder } from '../services/orderApi';
 import { useAuthStore } from '../store/authStore';
+import toast from 'react-hot-toast';
 
 export const Checkout: React.FC = () => {
-  const { cart, subtotal, clearCart } = useCartStore();
+  const { cart, clearCart } = useCartStore();
+  const subtotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     email: user?.email || '',
@@ -25,8 +26,10 @@ export const Checkout: React.FC = () => {
     phone: '',
   });
 
-  const shippingCost = subtotal > 10000 ? 0 : 300;
-  const total = subtotal + shippingCost;
+  // Temporarily disable shipping calculations
+  // const shippingCost = subtotal > 10000 ? 0 : 300;
+  // const total = subtotal + shippingCost;
+  const total = subtotal;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -35,14 +38,13 @@ export const Checkout: React.FC = () => {
 
   const handleProcessOrder = async () => {
     setIsProcessing(true);
-    setError(null);
     try {
       const payload = {
         customerName: `${formData.firstName} ${formData.lastName}`.trim(),
         customerEmail: formData.email,
         customerPhone: formData.phone,
-        deliveryAddress: `${formData.address} ${formData.apartment}`.trim(),
-        county: formData.city,
+        deliveryAddress: `${formData.address} ${formData.apartment}`.trim() || 'N/A',
+        county: formData.city || 'N/A',
         items: cart.map(item => ({
           productId: item.productId,
           variantId: item.variantId,
@@ -53,9 +55,10 @@ export const Checkout: React.FC = () => {
       const order = await createOrder(payload);
       
       clearCart();
+      toast.success('Order placed successfully!');
       navigate(`/order-confirmation/${order.orderNumber}`);
     } catch (err: any) {
-      setError(err.message || 'Failed to place order. Please try again.');
+      toast.error(err.message || 'Failed to place order. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -135,7 +138,7 @@ export const Checkout: React.FC = () => {
               <div className="flex justify-end">
                 <button
                   onClick={() => setStep(2)}
-                  disabled={!formData.email || !formData.firstName || !formData.address || !formData.phone}
+                  disabled={!formData.email || !formData.firstName || !formData.phone}
                   className="px-8 py-4 bg-brand-black text-brand-white text-sm font-semibold uppercase tracking-widest hover:bg-brand-black/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Continue to Payment
@@ -154,7 +157,7 @@ export const Checkout: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-brand-taupe">Ship to</span>
-                  <span className="text-right max-w-xs">{formData.address}, {formData.city}</span>
+                  <span className="text-right max-w-xs">{formData.address || 'N/A'}, {formData.city}</span>
                   <button onClick={() => setStep(1)} className="text-xs uppercase underline">Change</button>
                 </div>
               </div>
@@ -210,11 +213,7 @@ export const Checkout: React.FC = () => {
                 </div>
               </div>
 
-              {error && (
-                <div className="bg-red-50 text-red-600 p-4 rounded text-sm border border-red-200">
-                  {error}
-                </div>
-              )}
+
 
               <div className="flex justify-between items-center pt-4">
                 <button onClick={() => setStep(1)} className="text-xs uppercase tracking-widest hover:underline flex items-center gap-1">
@@ -246,19 +245,19 @@ export const Checkout: React.FC = () => {
 
             <div className="max-h-[40vh] overflow-y-auto no-scrollbar mb-6 space-y-4 pr-2 border-b border-brand-stone/30 pb-6">
               {cart.map(item => (
-                <div key={item.id} className="flex gap-4">
-                  <div className="relative w-16 h-20 bg-brand-stone/20 flex-shrink-0">
+                <div key={item.id} className="flex gap-4 items-center">
+                  <div className="w-16 h-20 bg-brand-stone/20 flex-shrink-0">
                     <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                    <span className="absolute -top-2 -right-2 w-5 h-5 bg-brand-taupe text-brand-white text-[10px] flex items-center justify-center rounded-full">
-                      {item.quantity}
-                    </span>
                   </div>
                   <div className="flex-grow flex flex-col justify-center">
                     <span className="text-sm font-medium">{item.name}</span>
-                    <span className="text-xs text-brand-taupe uppercase">{item.color} / {item.size}</span>
+                    <span className="text-xs text-brand-taupe uppercase mb-1">
+                      {[item.color, item.size].filter(Boolean).join(' · ')}
+                    </span>
+                    <span className="text-xs text-brand-taupe">Qty: {item.quantity}</span>
                   </div>
-                  <div className="flex flex-col justify-center items-end">
-                    <span className="text-sm">KES {(item.price * item.quantity).toLocaleString()}</span>
+                  <div className="flex flex-col justify-center items-end flex-shrink-0">
+                    <span className="text-sm font-medium">KES {(item.price * item.quantity).toLocaleString()}</span>
                   </div>
                 </div>
               ))}
@@ -269,10 +268,12 @@ export const Checkout: React.FC = () => {
                 <span className="text-brand-taupe">Subtotal</span>
                 <span>KES {subtotal.toLocaleString()}</span>
               </div>
+              {/* Temporarily disable shipping UI
               <div className="flex justify-between">
                 <span className="text-brand-taupe">Shipping (Nairobi Express)</span>
                 <span>{shippingCost === 0 ? 'Free' : `KES ${shippingCost.toLocaleString()}`}</span>
               </div>
+              */}
             </div>
 
             <div className="flex justify-between items-center">

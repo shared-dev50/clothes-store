@@ -8,13 +8,11 @@ interface CartState {
   removeFromCart: (cartItemId: string) => void;
   updateQuantity: (cartItemId: string, quantity: number) => void;
   clearCart: () => void;
-  subtotal: number;
-  itemCount: number;
 }
 
 export const useCartStore = create<CartState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       cart: [],
 
       addToCart: (product, variant, quantity) => {
@@ -59,14 +57,6 @@ export const useCartStore = create<CartState>()(
       },
 
       clearCart: () => set({ cart: [] }),
-
-      get subtotal() {
-        return get().cart.reduce((total, item) => total + item.price * item.quantity, 0);
-      },
-
-      get itemCount() {
-        return get().cart.reduce((count, item) => count + item.quantity, 0);
-      },
     }),
     {
       name: 'clothing_store_cart',

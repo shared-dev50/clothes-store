@@ -2,14 +2,17 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, Trash2, ArrowRight } from 'lucide-react';
 import { useCartStore } from '../store/cartStore';
+import toast from 'react-hot-toast';
 
 export const Cart: React.FC = () => {
-  const { cart, updateQuantity, removeFromCart, subtotal } = useCartStore();
+  const { cart, updateQuantity, removeFromCart } = useCartStore();
+  const subtotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
   const navigate = useNavigate();
 
-  const freeShippingThreshold = 10000;
-  const remainingForFreeShipping = Math.max(0, freeShippingThreshold - subtotal);
-  const progressPercentage = Math.min(100, (subtotal / freeShippingThreshold) * 100);
+  const handleRemove = (id: string) => {
+    removeFromCart(id);
+    toast.success('Item removed from cart');
+  };
 
   if (cart.length === 0) {
     return (
@@ -35,21 +38,6 @@ export const Cart: React.FC = () => {
       <div className="flex flex-col lg:flex-row gap-12 lg:gap-20">
         {/* Cart Items List */}
         <div className="w-full lg:w-2/3">
-          {/* Free Shipping Progress */}
-          <div className="bg-brand-stone/10 p-6 mb-8 border border-brand-stone/30">
-            <p className="text-sm font-medium uppercase tracking-wider mb-4 text-center">
-              {remainingForFreeShipping > 0 
-                ? `You're KES ${remainingForFreeShipping.toLocaleString()} away from free Nairobi delivery` 
-                : 'Congratulations! You get free Nairobi delivery.'}
-            </p>
-            <div className="w-full h-1.5 bg-brand-stone/40 overflow-hidden">
-              <div 
-                className="h-full bg-brand-black transition-all duration-500 ease-out"
-                style={{ width: `${progressPercentage}%` }}
-              />
-            </div>
-          </div>
-
           <div className="hidden md:grid grid-cols-12 gap-4 pb-4 border-b border-brand-stone text-xs font-semibold uppercase tracking-widest text-brand-taupe">
             <div className="col-span-6">Product</div>
             <div className="col-span-3 text-center">Quantity</div>
@@ -74,7 +62,7 @@ export const Cart: React.FC = () => {
                     <p className="text-xs text-brand-taupe uppercase tracking-widest">Size: {item.size}</p>
                     
                     <button 
-                      onClick={() => removeFromCart(item.id)}
+                      onClick={() => handleRemove(item.id)}
                       className="text-xs text-brand-taupe uppercase tracking-widest underline underline-offset-4 mt-auto w-fit hover:text-red-500 transition-colors md:hidden"
                     >
                       Remove
@@ -107,7 +95,7 @@ export const Cart: React.FC = () => {
                   <div className="flex flex-col items-end gap-2">
                     <span className="text-sm font-semibold">KES {(item.price * item.quantity).toLocaleString()}</span>
                     <button 
-                      onClick={() => removeFromCart(item.id)}
+                      onClick={() => handleRemove(item.id)}
                       className="hidden md:block text-brand-taupe hover:text-red-500 transition-colors"
                       title="Remove item"
                     >
@@ -129,10 +117,6 @@ export const Cart: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-brand-taupe">Subtotal</span>
                 <span className="font-medium">KES {subtotal.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-brand-taupe">Shipping</span>
-                <span className="font-medium">Calculated at checkout</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-brand-taupe">Tax</span>

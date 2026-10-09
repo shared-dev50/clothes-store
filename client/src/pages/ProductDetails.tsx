@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, Minus, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import type { ProductVariant } from '../types';
 import { getProductById } from '../services/productApi';
 import { useCartStore } from '../store/cartStore';
+import toast from 'react-hot-toast';
 
 export const ProductDetails: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
 
   const { data: product, isLoading: loading } = useQuery({
     queryKey: ['product', slug],
@@ -26,21 +28,42 @@ export const ProductDetails: React.FC = () => {
   // Set defaults when product is loaded
   useEffect(() => {
     if (product) {
-      if (product.colors.length > 0 && !selectedColor) setSelectedColor(product.colors[0].name);
-      if (product.sizes.length > 0 && !selectedSize) setSelectedSize(product.sizes[0]);
+      const needsColor = product.colors.length > 0;
+      const needsSize = product.sizes.length > 0;
+
+      if (!selectedColor && needsColor) {
+        const availableColor = product.colors.find(c => product.variants.some(v => v.color === c.name && v.stock > 0)) || product.colors[0];
+        setSelectedColor(availableColor.name);
+      }
+      if (!selectedSize && needsSize) {
+        const availableSize = product.sizes.find(s => product.variants.some(v => v.size === s && v.stock > 0)) || product.sizes[0];
+        setSelectedSize(availableSize);
+      }
     }
-  }, [product, selectedColor, selectedSize]);
+  }, [product]); // Removed selectedColor, selectedSize to prevent resetting loops
 
   // Update current variant when color or size changes
   useEffect(() => {
-    if (product && selectedColor && selectedSize) {
-      const variant = product.variants.find(
-        (v) => v.color === selectedColor && v.size === selectedSize
-      );
-      setCurrentVariant(variant || null);
-      setQuantity(1); // Reset quantity on variant change
+    if (product) {
+      const needsColor = product.colors.length > 0;
+      const needsSize = product.sizes.length > 0;
+
+      if ((!needsColor || selectedColor) && (!needsSize || selectedSize)) {
+        const variant = product.variants.find((v) => {
+          const matchColor = needsColor ? v.color === selectedColor : true;
+          const matchSize = needsSize ? v.size === selectedSize : true;
+          return matchColor && matchSize;
+        });
+        setCurrentVariant(variant || null);
+      } else {
+        setCurrentVariant(null);
+      }
     }
   }, [product, selectedColor, selectedSize]);
+
+  useEffect(() => {
+    setQuantity(1);
+  }, [currentVariant]);
 
   if (loading) {
     return (
@@ -69,14 +92,30 @@ export const ProductDetails: React.FC = () => {
     );
   }
 
+  const needsColor = product ? product.colors.length > 0 : false;
+  const needsSize = product ? product.sizes.length > 0 : false;
+  const isSelectionIncomplete = (needsColor && !selectedColor) || (needsSize && !selectedSize) || !currentVariant;
   const isOutOfStock = currentVariant ? currentVariant.stock === 0 : false;
-  const isSelectionIncomplete = !selectedColor || !selectedSize || !currentVariant;
 
   const handleAddToCart = () => {
     if (product && currentVariant && !isOutOfStock) {
       addToCart(product, currentVariant, quantity);
-      // Toast notification
-      alert('Added to cart!');
+      toast.success(`${product.name} added to cart`);
+    } else if (isSelectionIncomplete) {
+      toast.error('Please select all options before adding to cart');
+    } else if (isOutOfStock) {
+      toast.error('This item is currently out of stock');
+    }
+  };
+
+  const handleBuyNow = () => {
+    if (product && currentVariant && !isOutOfStock) {
+      addToCart(product, currentVariant, quantity);
+      navigate('/checkout');
+    } else if (isSelectionIncomplete) {
+      toast.error('Please select all options before buying');
+    } else if (isOutOfStock) {
+      toast.error('This item is currently out of stock');
     }
   };
 
@@ -128,64 +167,67 @@ export const ProductDetails: React.FC = () => {
           </p>
 
           {/* Color Selection */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-semibold uppercase tracking-widest">Color</span>
-              <span className="text-xs text-brand-taupe uppercase">{selectedColor}</span>
+          {product.colors.length > 0 && (
+            <div className="mb-8">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-semibold uppercase tracking-widest">Color</span>
+                <span className="text-xs text-brand-taupe uppercase">{selectedColor}</span>
+              </div>
+              <div className="flex gap-3">
+                {product.colors.map(color => (
+                  <button
+                    key={color.name}
+                    onClick={() => setSelectedColor(color.name)}
+                    className={`w-8 h-8 rounded-full border-2 transition-all ${selectedColor === color.name
+                        ? 'border-brand-black p-0.5 scale-110'
+                        : 'border-transparent hover:border-brand-stone'
+                      }`}
+                  >
+                    <div
+                      className="w-full h-full rounded-full border border-brand-stone/20 shadow-sm"
+                      style={{ backgroundColor: color.hex }}
+                      title={color.name}
+                    />
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex gap-3">
-              {product.colors.map(color => (
-                <button
-                  key={color.name}
-                  onClick={() => setSelectedColor(color.name)}
-                  className={`w-8 h-8 rounded-full border-2 transition-all ${selectedColor === color.name
-                      ? 'border-brand-black p-0.5 scale-110'
-                      : 'border-transparent hover:border-brand-stone'
-                    }`}
-                >
-                  <div
-                    className="w-full h-full rounded-full border border-brand-stone/20 shadow-sm"
-                    style={{ backgroundColor: color.hex }}
-                    title={color.name}
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Size Selection */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-semibold uppercase tracking-widest">Size</span>
-              <button className="text-xs text-brand-taupe uppercase underline underline-offset-4 hover:text-brand-black">Size Guide</button>
-            </div>
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
-              {product.sizes.map(size => {
-                // Check if this size + currently selected color exists in variants and has stock
-                const sizeVariant = product.variants.find(v => v.size === size && v.color === selectedColor);
-                const isSizeOutOfStock = sizeVariant ? sizeVariant.stock === 0 : true;
+          {product.sizes.length > 0 && (
+            <div className="mb-8">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-semibold uppercase tracking-widest">Size</span>
+                <button className="text-xs text-brand-taupe uppercase underline underline-offset-4 hover:text-brand-black">Size Guide</button>
+              </div>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+                {product.sizes.map(size => {
+                  const sizeVariant = product.variants.find(v => v.size === size && (!needsColor || v.color === selectedColor));
+                  const isSizeOutOfStock = sizeVariant ? sizeVariant.stock === 0 : true;
 
-                return (
-                  <button
-                    key={size}
-                    onClick={() => setSelectedSize(size)}
-                    disabled={isSizeOutOfStock}
-                    className={`
-                      py-3 text-sm uppercase font-medium tracking-wider transition-all border
-                      ${selectedSize === size
-                        ? 'border-brand-black bg-brand-black text-brand-white'
-                        : isSizeOutOfStock
-                          ? 'border-brand-stone/40 text-brand-stone/50 bg-brand-stone/10 cursor-not-allowed line-through'
-                          : 'border-brand-stone hover:border-brand-black bg-brand-white'
-                      }
-                    `}
-                  >
-                    {size}
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      key={size}
+                      onClick={() => setSelectedSize(size)}
+                      disabled={isSizeOutOfStock}
+                      className={`
+                        py-3 text-sm uppercase font-medium tracking-wider transition-all border
+                        ${selectedSize === size
+                          ? 'border-brand-black bg-brand-black text-brand-white'
+                          : isSizeOutOfStock
+                            ? 'border-brand-stone/40 text-brand-stone/50 bg-brand-stone/10 cursor-not-allowed line-through'
+                            : 'border-brand-stone hover:border-brand-black bg-brand-white'
+                        }
+                      `}
+                    >
+                      {size}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Quantity & Stock Status */}
           <div className="mb-8">
@@ -246,6 +288,7 @@ export const ProductDetails: React.FC = () => {
               }
             </button>
             <button
+              onClick={handleBuyNow}
               disabled={isOutOfStock || isSelectionIncomplete}
               className={`
                 w-full py-4 text-sm font-semibold uppercase tracking-widest transition-colors border border-brand-black
