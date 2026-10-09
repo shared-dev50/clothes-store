@@ -98,7 +98,9 @@ const getProducts = async (filters) => {
         include: {
             category: true,
             images: true,
-            variants: true,
+            variants: {
+                where: { isArchived: false },
+            },
         },
         orderBy: {
             createdAt: 'desc',
@@ -113,7 +115,9 @@ const getProductBySlug = async (slug) => {
         include: {
             category: true,
             images: true,
-            variants: true,
+            variants: {
+                where: { isArchived: false },
+            },
         },
     });
     if (!product)

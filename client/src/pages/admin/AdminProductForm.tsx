@@ -11,6 +11,20 @@ import {
 } from '../../services/adminApi';
 import { ArrowLeft, Plus, Trash2, Upload } from 'lucide-react';
 
+const PREDEFINED_COLORS = [
+  { name: 'Black', hex: '#000000' },
+  { name: 'White', hex: '#FFFFFF' },
+  { name: 'Red', hex: '#FF0000' },
+  { name: 'Blue', hex: '#0000FF' },
+  { name: 'Green', hex: '#008000' },
+  { name: 'Pink', hex: '#FFC0CB' },
+  { name: 'Brown', hex: '#8B4513' },
+  { name: 'Beige/Cream', hex: '#F5F5DC' },
+  { name: 'Grey', hex: '#808080' },
+  { name: 'Purple', hex: '#800080' },
+  { name: 'Orange', hex: '#FFA500' },
+];
+
 export const AdminProductForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id);
@@ -27,7 +41,7 @@ export const AdminProductForm: React.FC = () => {
     details: [''],
     images: [''],
     variants: [
-      { color: '', colorHex: '', size: '', stock: 0, sku: '' }
+      { id: undefined, color: '', colorHex: '', size: '', stock: 0, sku: '', isArchived: false }
     ]
   });
 
@@ -60,13 +74,15 @@ export const AdminProductForm: React.FC = () => {
           : [''],
         variants: initialProduct.variants?.length 
           ? initialProduct.variants.map((v: any) => ({
+              id: v.id,
               color: v.color || '',
               colorHex: v.colorHex || '',
               size: v.size || '',
               stock: v.stock || 0,
-              sku: v.sku || ''
+              sku: v.sku || '',
+              isArchived: v.isArchived || false
             }))
-          : [{ color: '', colorHex: '', size: '', stock: 0, sku: '' }]
+          : [{ id: undefined, color: '', colorHex: '', size: '', stock: 0, sku: '', isArchived: false }]
       });
     }
   }, [isEdit, initialProduct]);
@@ -87,7 +103,7 @@ export const AdminProductForm: React.FC = () => {
       ...formData,
       details: formData.details.filter(d => d.trim() !== ''),
       images: formData.images.filter(i => i.trim() !== ''),
-      variants: formData.variants.filter(v => v.sku.trim() !== '')
+      variants: formData.variants.filter(v => v.color.trim() !== '' || v.size.trim() !== '')
     };
     
     mutation.mutate(cleanData);
@@ -160,23 +176,25 @@ export const AdminProductForm: React.FC = () => {
     }
   };
 
-  const handleVariantChange = (index: number, key: string, value: string | number) => {
-    const newVariants = [...formData.variants];
-    newVariants[index] = { ...newVariants[index], [key]: value };
-    setFormData({ ...formData, variants: newVariants });
+  const handleVariantChange = (index: number, key: string, value: string | number | boolean) => {
+    setFormData(prev => {
+      const newVariants = [...prev.variants];
+      newVariants[index] = { ...newVariants[index], [key]: value };
+      return { ...prev, variants: newVariants };
+    });
   };
 
   const addVariant = () => {
     setFormData({ 
       ...formData, 
-      variants: [...formData.variants, { color: '', colorHex: '', size: '', stock: 0, sku: '' }] 
+      variants: [...formData.variants, { id: undefined, color: '', colorHex: '', size: '', stock: 0, sku: '', isArchived: false }] 
     });
   };
 
   const removeVariant = (index: number) => {
     const newVariants = formData.variants.filter((_, i) => i !== index);
     if (newVariants.length === 0) {
-      newVariants.push({ color: '', colorHex: '', size: '', stock: 0, sku: '' });
+      newVariants.push({ id: undefined, color: '', colorHex: '', size: '', stock: 0, sku: '', isArchived: false });
     }
     setFormData({ ...formData, variants: newVariants });
   };
@@ -340,50 +358,92 @@ export const AdminProductForm: React.FC = () => {
           <h2 className="text-lg font-semibold uppercase tracking-wide border-b border-brand-stone pb-2">Variants</h2>
           <div className="space-y-4">
             {formData.variants.map((variant, index) => (
-              <div key={index} className="flex flex-wrap gap-2 items-end border border-brand-stone/50 p-4 bg-brand-stone/5">
-                <div className="flex-1 min-w-[120px]">
-                  <label className="block text-xs font-medium text-brand-taupe mb-1">Color</label>
-                  <input 
-                    type="text" placeholder="e.g. Black"
-                    value={variant.color} onChange={e => handleVariantChange(index, 'color', e.target.value)}
-                    className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
-                  />
+              <div key={index} className={`flex flex-col gap-4 border p-4 ${variant.isArchived ? 'border-red-200 bg-red-50 opacity-75' : 'border-brand-stone/50 bg-brand-stone/5'}`}>
+                {variant.isArchived && (
+                  <div className="text-xs font-semibold text-red-600 uppercase tracking-wide">Archived Variant</div>
+                )}
+                <div className="flex flex-wrap gap-4 items-start">
+                  
+                  {/* Color Selection */}
+                  <div className="flex-1 min-w-[250px] space-y-3">
+                    <label className="block text-xs font-medium text-brand-taupe">Color</label>
+                    <div className="flex flex-wrap gap-2">
+                      {PREDEFINED_COLORS.map(c => (
+                        <button
+                          key={c.name}
+                          type="button"
+                          onClick={() => {
+                            handleVariantChange(index, 'color', c.name);
+                            handleVariantChange(index, 'colorHex', c.hex);
+                          }}
+                          className={`w-6 h-6 rounded-full border border-gray-400 shadow-sm transition-transform ${variant.colorHex === c.hex ? 'scale-125 border-brand-black ring-1 ring-brand-black ring-offset-1' : 'hover:scale-110'}`}
+                          style={{ backgroundColor: c.hex }}
+                          title={c.name}
+                        />
+                      ))}
+                      {/* Custom Color Native Picker */}
+                      <div className="flex items-center gap-2 ml-2 pl-2 border-l border-brand-stone/50">
+                        <span className="text-xs font-medium text-brand-taupe">Custom:</span>
+                        <input
+                          type="color"
+                          value={variant.colorHex || '#000000'}
+                          onChange={(e) => {
+                            handleVariantChange(index, 'colorHex', e.target.value);
+                            if (PREDEFINED_COLORS.some(c => c.name === variant.color)) {
+                                handleVariantChange(index, 'color', '');
+                            }
+                          }}
+                          className="w-8 h-8 p-0 border-0 cursor-pointer rounded overflow-hidden hover:scale-110 transition-transform"
+                          title="Custom Color"
+                        />
+                      </div>
+                    </div>
+                    {/* Color Name Input */}
+                    <div>
+                      <input 
+                        type="text" 
+                        required
+                        placeholder="Color Name (e.g. Burgundy)"
+                        value={variant.color} 
+                        onChange={e => handleVariantChange(index, 'color', e.target.value)}
+                        className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Size and Stock */}
+                  <div className="flex-1 min-w-[150px] flex gap-4">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-brand-taupe mb-1">Size</label>
+                      <input 
+                        type="text" placeholder="e.g. M"
+                        value={variant.size} onChange={e => handleVariantChange(index, 'size', e.target.value)}
+                        className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-brand-taupe mb-1">Stock</label>
+                      <input 
+                        type="number" min="0" required
+                        value={variant.stock} onChange={e => handleVariantChange(index, 'stock', Number(e.target.value))}
+                        className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center gap-2 mt-4 pl-4 border-l border-brand-stone/50">
+                    <button 
+                      type="button" 
+                      onClick={() => handleVariantChange(index, 'isArchived', !variant.isArchived)} 
+                      className={`text-xs font-medium px-2 py-1 border rounded transition-colors ${variant.isArchived ? 'text-green-600 border-green-600 hover:bg-green-50' : 'text-orange-500 border-orange-500 hover:bg-orange-50'}`}
+                    >
+                      {variant.isArchived ? 'Restore' : 'Archive'}
+                    </button>
+                    <button type="button" onClick={() => removeVariant(index)} className="p-2 text-brand-taupe hover:text-red-500">
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-[100px]">
-                  <label className="block text-xs font-medium text-brand-taupe mb-1">Color Hex</label>
-                  <input 
-                    type="text" placeholder="#000000"
-                    value={variant.colorHex} onChange={e => handleVariantChange(index, 'colorHex', e.target.value)}
-                    className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
-                  />
-                </div>
-                <div className="flex-1 min-w-[80px]">
-                  <label className="block text-xs font-medium text-brand-taupe mb-1">Size</label>
-                  <input 
-                    type="text" placeholder="e.g. M"
-                    value={variant.size} onChange={e => handleVariantChange(index, 'size', e.target.value)}
-                    className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
-                  />
-                </div>
-                <div className="flex-1 min-w-[80px]">
-                  <label className="block text-xs font-medium text-brand-taupe mb-1">Stock</label>
-                  <input 
-                    type="number" min="0" required
-                    value={variant.stock} onChange={e => handleVariantChange(index, 'stock', Number(e.target.value))}
-                    className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
-                  />
-                </div>
-                <div className="flex-1 min-w-[120px]">
-                  <label className="block text-xs font-medium text-brand-taupe mb-1">SKU *</label>
-                  <input 
-                    type="text" required placeholder="SKU-123"
-                    value={variant.sku} onChange={e => handleVariantChange(index, 'sku', e.target.value)}
-                    className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
-                  />
-                </div>
-                <button type="button" onClick={() => removeVariant(index)} className="p-2 text-brand-taupe hover:text-red-500">
-                  <Trash2 size={20} />
-                </button>
               </div>
             ))}
           </div>

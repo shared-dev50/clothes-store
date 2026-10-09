@@ -107,7 +107,9 @@ export const getProducts = async (filters: ProductQueryFilters): Promise<Product
     include: {
       category: true,
       images: true,
-      variants: true,
+      variants: {
+        where: { isArchived: false },
+      },
     },
     orderBy: {
       createdAt: 'desc',
@@ -123,7 +125,9 @@ export const getProductBySlug = async (slug: string): Promise<ProductDTO | null>
     include: {
       category: true,
       images: true,
-      variants: true,
+      variants: {
+        where: { isArchived: false },
+      },
     },
   });
 

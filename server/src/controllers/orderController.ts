@@ -31,6 +31,9 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
           if (!dbVariant) {
             throw new Error(`Variant not found`);
           }
+          if (dbVariant.isArchived) {
+             throw new Error(`Variant for ${dbVariant.product.name} is no longer available`);
+          }
           if (dbVariant.stock - dbVariant.reservedStock < quantity) {
              throw new Error(`Insufficient stock for ${dbVariant.product.name}`);
           }
