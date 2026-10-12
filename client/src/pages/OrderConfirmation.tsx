@@ -1,13 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, CreditCard, Smartphone } from 'lucide-react';
+import { CheckCircle, CreditCard, Smartphone, AlertCircle, ShieldCheck } from 'lucide-react';
 import { getOrder, initiateMpesa, createStripePayment, getPaymentStatus } from '../services/orderApi';
-import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import type { Stripe } from '@stripe/stripe-js';
+import { getStripePromise } from '../utils/stripe';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
+interface CheckoutFormProps {
+  orderNumber: string;
+  clientSecret: string;
+  customerName: string;
+  customerEmail: string;
+  onPaymentSuccess: () => void;
+}
 
-const CheckoutForm = ({ clientSecret, onPaymentSuccess }: { clientSecret: string, onPaymentSuccess: () => void }) => {
+const CheckoutForm: React.FC<CheckoutFormProps> = ({
+  orderNumber,
+  clientSecret,
+  customerName,
+  customerEmail,
+  onPaymentSuccess
+}) => {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
@@ -17,32 +30,98 @@ const CheckoutForm = ({ clientSecret, onPaymentSuccess }: { clientSecret: string
     event.preventDefault();
     if (!stripe || !elements) return;
 
-    setProcessing(true);
-    const result = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: {
-        card: elements.getElement(CardElement)!,
-      }
-    });
+    const cardElement = elements.getElement(CardElement);
+    if (!cardElement) return;
 
-    if (result.error) {
-      setError(result.error.message || 'Payment failed');
-      setProcessing(false);
-    } else {
-      if (result.paymentIntent?.status === 'succeeded') {
+    setError(null);
+    setProcessing(true);
+
+    try {
+      const result = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: customerName,
+            email: customerEmail,
+          }
+        }
+      });
+
+      if (result.error) {
+        setError(result.error.message || 'Payment failed');
+        setProcessing(false);
+      } else if (result.paymentIntent?.status === 'succeeded' || result.paymentIntent?.status === 'processing') {
+        // Poll backend status to ensure the webhook processed and persisted the paid state
+        for (let i = 0; i < 5; i++) {
+          try {
+            const statusData = await getPaymentStatus(orderNumber);
+            if (statusData.paymentStatus === 'PAID') {
+              break;
+            }
+          } catch {
+            // ignore interim polling error
+          }
+          await new Promise(res => setTimeout(res, 1200));
+        }
+
         onPaymentSuccess();
+      } else {
+        setError(`Unexpected payment status: ${result.paymentIntent?.status}`);
+        setProcessing(false);
       }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during payment processing');
+      setProcessing(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mt-4 p-4 border border-brand-stone/30 bg-brand-white">
-      <CardElement className="p-3 border border-brand-stone mb-4" />
-      {error && <div className="text-red-500 text-sm mb-4">{error}</div>}
-      <button 
+    <form onSubmit={handleSubmit} className="mt-4 p-4 border border-brand-stone/30 bg-brand-white space-y-4">
+      <div className="p-3 bg-brand-white border border-brand-stone rounded focus-within:border-brand-black transition-colors">
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: '14px',
+                color: '#1a1a1a',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                '::placeholder': {
+                  color: '#8e877e',
+                },
+              },
+              invalid: {
+                color: '#dc2626',
+              },
+            },
+          }}
+        />
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-600 text-xs rounded">
+          <AlertCircle size={16} className="shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 text-xs text-brand-taupe">
+        <ShieldCheck size={16} className="text-[#635BFF]" />
+        <span>Secured and encrypted by Stripe</span>
+      </div>
+
+      <button
+        type="submit"
         disabled={!stripe || processing}
-        className="w-full bg-brand-black text-brand-white py-3 uppercase text-sm font-semibold hover:bg-brand-taupe disabled:opacity-50"
+        className="w-full bg-brand-black text-brand-white py-3 uppercase text-sm font-semibold tracking-wider hover:bg-brand-black/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
-        {processing ? 'Processing...' : 'Pay with Card'}
+        {processing ? (
+          <>
+            <div className="w-4 h-4 border-2 border-brand-white border-t-transparent rounded-full animate-spin" />
+            Processing...
+          </>
+        ) : (
+          'Pay with Card'
+        )}
       </button>
     </form>
   );
@@ -54,16 +133,18 @@ export const OrderConfirmation: React.FC = () => {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Payment states
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [mpesaLoading, setMpesaLoading] = useState(false);
   const [mpesaMessage, setMpesaMessage] = useState<string | null>(null);
   const [mpesaError, setMpesaError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
-  
+
   const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null);
   const [stripeLoading, setStripeLoading] = useState(false);
+  const [stripeError, setStripeError] = useState<string | null>(null);
+  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
 
   useEffect(() => {
     if (!orderNumber) {
@@ -78,7 +159,7 @@ export const OrderConfirmation: React.FC = () => {
         if (data.customerPhone) {
           setMpesaPhone(data.customerPhone);
         }
-      } catch (err) {
+      } catch {
         setError('Failed to load order details.');
       } finally {
         setLoading(false);
@@ -96,17 +177,17 @@ export const OrderConfirmation: React.FC = () => {
         try {
           const statusData = await getPaymentStatus(orderNumber!);
           if (statusData.paymentStatus === 'PAID') {
-            setOrder((prev: any) => ({ ...prev, paymentStatus: 'PAID' }));
+            setOrder((prev: any) => ({ ...prev, paymentStatus: 'PAID', status: statusData.orderStatus || 'PROCESSING' }));
             setPolling(false);
             setMpesaMessage('Payment received successfully!');
           } else if (statusData.latestPayment?.status === 'FAILED') {
             setPolling(false);
             setMpesaError(statusData.latestPayment.failureReason || 'Payment failed.');
           }
-        } catch (e) {
+        } catch {
           // ignore polling errors
         }
-      }, 5000);
+      }, 4000);
     }
     return () => clearInterval(interval);
   }, [polling, order?.paymentStatus, orderNumber]);
@@ -117,7 +198,7 @@ export const OrderConfirmation: React.FC = () => {
     setMpesaMessage(null);
     try {
       const res = await initiateMpesa(orderNumber!, mpesaPhone);
-      setMpesaMessage(res.message + ". Please check your phone to enter your M-Pesa PIN.");
+      setMpesaMessage((res.message || 'Prompt sent') + '. Please check your phone to enter your M-Pesa PIN.');
       setPolling(true);
     } catch (err: any) {
       setMpesaError(err.message || 'Failed to initiate M-Pesa');
@@ -128,11 +209,18 @@ export const OrderConfirmation: React.FC = () => {
 
   const handleStripePay = async () => {
     setStripeLoading(true);
+    setStripeError(null);
     try {
       const res = await createStripePayment(orderNumber!);
+      const promise = await getStripePromise(res.publishableKey);
+      if (!promise) {
+        setStripeError('Stripe publishable key is not configured. Please add VITE_STRIPE_PUBLISHABLE_KEY to client/.env.');
+        return;
+      }
+      setStripePromise(Promise.resolve(promise));
       setStripeClientSecret(res.clientSecret);
     } catch (err: any) {
-      console.error(err);
+      setStripeError(err.message || 'Failed to initialize Stripe payment');
     } finally {
       setStripeLoading(false);
     }
@@ -167,14 +255,14 @@ export const OrderConfirmation: React.FC = () => {
       <CheckCircle size={64} className="text-brand-gold mb-6" />
       <h1 className="text-3xl md:text-4xl font-display uppercase tracking-widest mb-4">Order Confirmed</h1>
       <p className="text-brand-taupe mb-2">Thank you for your purchase, {order.customerName}.</p>
-      <p className="text-brand-taupe mb-8">Your order #{order.orderNumber} is being processed.</p>
+      <p className="text-brand-taupe mb-8">Your order #{order.orderNumber} is registered.</p>
 
       {order.paymentStatus !== 'PAID' && (
         <div className="w-full max-w-2xl mb-8 space-y-6">
           <div className="bg-brand-stone/10 p-6 md:p-8 text-left border border-brand-stone/30">
             <h3 className="text-lg font-semibold uppercase tracking-widest mb-4 border-b border-brand-stone/30 pb-2">Complete Your Payment</h3>
-            <p className="text-sm text-brand-taupe mb-6">Your order is currently UNPAID. Please select a payment method below to complete your order.</p>
-            
+            <p className="text-sm text-brand-taupe mb-6">Your order is currently UNPAID. Select a payment method below to complete payment.</p>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* M-PESA */}
               <div className="border border-brand-stone/50 p-4">
@@ -182,14 +270,14 @@ export const OrderConfirmation: React.FC = () => {
                   <Smartphone size={20} /> Pay with M-Pesa
                 </div>
                 <label className="block text-xs font-medium text-brand-taupe mb-1">M-Pesa Phone Number</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={mpesaPhone}
                   onChange={e => setMpesaPhone(e.target.value)}
                   placeholder="07XXXXXXXX"
                   className="w-full border border-brand-stone p-2 mb-4 text-sm focus:outline-none"
                 />
-                <button 
+                <button
                   onClick={handleMpesaPay}
                   disabled={mpesaLoading || polling}
                   className="w-full bg-[#4CAF50] text-white py-3 uppercase text-sm font-semibold tracking-wide hover:bg-[#45a049] transition-colors disabled:opacity-50"
@@ -206,20 +294,30 @@ export const OrderConfirmation: React.FC = () => {
                   <CreditCard size={20} /> Pay with Card
                 </div>
                 {!stripeClientSecret ? (
-                  <button 
-                    onClick={handleStripePay}
-                    disabled={stripeLoading}
-                    className="w-full bg-[#635BFF] text-white py-3 uppercase text-sm font-semibold tracking-wide hover:bg-[#5249E5] transition-colors disabled:opacity-50 mt-[60px]"
-                  >
-                    {stripeLoading ? 'Loading...' : 'Pay with Stripe'}
-                  </button>
+                  <div>
+                    <button
+                      onClick={handleStripePay}
+                      disabled={stripeLoading}
+                      className="w-full bg-[#635BFF] text-white py-3 uppercase text-sm font-semibold tracking-wide hover:bg-[#5249E5] transition-colors disabled:opacity-50 mt-[60px]"
+                    >
+                      {stripeLoading ? 'Loading...' : 'Pay with Stripe'}
+                    </button>
+                    {stripeError && <p className="mt-3 text-xs text-red-500 font-medium">{stripeError}</p>}
+                  </div>
                 ) : (
-                  <Elements stripe={stripePromise} options={{ clientSecret: stripeClientSecret }}>
-                    <CheckoutForm 
-                      clientSecret={stripeClientSecret} 
-                      onPaymentSuccess={() => setOrder((prev: any) => ({ ...prev, paymentStatus: 'PAID' }))}
-                    />
-                  </Elements>
+                  stripePromise && (
+                    <Elements stripe={stripePromise} options={{ clientSecret: stripeClientSecret }}>
+                      <CheckoutForm
+                        orderNumber={order.orderNumber}
+                        clientSecret={stripeClientSecret}
+                        customerName={order.customerName}
+                        customerEmail={order.customerEmail}
+                        onPaymentSuccess={() => {
+                          setOrder((prev: any) => ({ ...prev, paymentStatus: 'PAID', status: 'PROCESSING' }));
+                        }}
+                      />
+                    </Elements>
+                  )
                 )}
               </div>
             </div>
@@ -255,7 +353,7 @@ export const OrderConfirmation: React.FC = () => {
 
         <h3 className="text-sm font-semibold uppercase tracking-widest mb-4 border-b border-brand-stone/30 pb-2">Items Ordered</h3>
         <div className="space-y-4 mb-6 border-b border-brand-stone/30 pb-6">
-          {order.items.map((item: any) => (
+          {order.items?.map((item: any) => (
             <div key={item.id} className="flex justify-between text-sm">
               <div className="flex-grow">
                 <span className="font-medium">{item.productName}</span>
@@ -273,7 +371,7 @@ export const OrderConfirmation: React.FC = () => {
           <p className="flex justify-between"><span className="text-brand-taupe">Subtotal:</span> KES {Number(order.subtotal).toLocaleString()}</p>
           <p className="flex justify-between"><span className="text-brand-taupe">Delivery Fee:</span> KES {Number(order.deliveryFee).toLocaleString()}</p>
         </div>
-        
+
         <div className="flex justify-between items-center text-lg md:text-xl font-bold">
           <span className="uppercase tracking-widest">Total</span>
           <span>KES {Number(order.total).toLocaleString()}</span>
@@ -289,4 +387,3 @@ export const OrderConfirmation: React.FC = () => {
     </div>
   );
 };
-

@@ -37,8 +37,8 @@ describe('Customer facing constraints for archived variants', () => {
         categoryId: category.id,
         variants: {
           create: [
-            { color: 'Red', size: 'M', sku: 'API-RED-M', stock: 10, isArchived: false },
-            { color: 'Blue', size: 'L', sku: 'API-BLU-L', stock: 5, isArchived: true }, // archived!
+            { color: 'Red', size: 'M', sku: `API-RED-M-${Date.now()}`, stock: 10, isArchived: false },
+            { color: 'Blue', size: 'L', sku: `API-BLU-L-${Date.now()}`, stock: 5, isArchived: true }, // archived!
           ]
         }
       },
@@ -74,7 +74,7 @@ describe('Customer facing constraints for archived variants', () => {
         categoryId: category.id,
         variants: {
           create: [
-            { color: 'Black', size: 'M', sku: 'CHK-BLK-M', stock: 10, isArchived: true }, // archived!
+            { color: 'Black', size: 'M', sku: `CHK-BLK-M-${Date.now()}`, stock: 10, isArchived: true }, // archived!
           ]
         }
       },

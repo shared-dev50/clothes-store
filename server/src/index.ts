@@ -22,9 +22,9 @@ if (missingCloudinaryEnv.length > 0) {
 
 // Middleware
 app.use(cors({ origin: CLIENT_URL }));
-// Mount stripe webhook BEFORE express.json() so it can use express.raw()
+// Mount stripe webhook BEFORE express.json() so it receives the unparsed raw buffer
 import paymentRoutes from './routes/paymentRoutes';
-app.use('/api/payments/stripe/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/payments/stripe/webhook', express.raw({ type: '*/*' }));
 
 app.use(express.json());
 
@@ -46,10 +46,14 @@ import { startOrderExpiryJob } from './jobs/expireOrders';
 // Error Handling
 app.use(errorHandler);
 
-// Start order expiry job
-startOrderExpiryJob();
+if (process.env.NODE_ENV !== 'test') {
+  // Start order expiry job
+  startOrderExpiryJob();
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  // Start server
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+export default app;

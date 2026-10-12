@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient, PaymentProvider, PaymentModelStatus } from '@prisma/client';
+import { PaymentProvider, PaymentModelStatus } from '@prisma/client';
+import prisma from '../config/db';
 import { AuthRequest } from '../middleware/auth';
 import Stripe from 'stripe';
-
-const prisma = new PrismaClient();
 
 // ==========================================
 // M-PESA DARAJA
@@ -256,10 +255,18 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
 // ==========================================
 // STRIPE
 // ==========================================
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder';
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_placeholder';
+const getStripeInstance = (): Stripe => {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey || secretKey === 'sk_test_placeholder') {
+    throw new Error('STRIPE_NOT_CONFIGURED');
+  }
+  return new Stripe(secretKey);
+};
 
-const stripe = new Stripe(STRIPE_SECRET_KEY);
+export const getStripeConfig = async (_req: Request, res: Response): Promise<void> => {
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+  res.json({ publishableKey });
+};
 
 export const createStripePayment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -270,7 +277,24 @@ export const createStripePayment = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const order = await prisma.order.findUnique({ where: { orderNumber } });
+    let stripe: Stripe;
+    try {
+      stripe = getStripeInstance();
+    } catch {
+      res.status(503).json({ error: 'Stripe payments are not configured on this server.' });
+      return;
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { orderNumber },
+      include: {
+        payments: {
+          where: { provider: PaymentProvider.STRIPE },
+          orderBy: { createdAt: 'desc' }
+        }
+      }
+    });
+
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -281,152 +305,266 @@ export const createStripePayment = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
+    if (order.paymentStatus === 'PAID') {
+      res.status(400).json({ error: 'Order has already been paid' });
+      return;
+    }
+
     if (order.status !== 'PENDING_PAYMENT' || order.paymentStatus !== 'UNPAID') {
       res.status(400).json({ error: 'Order is not in a payable state' });
       return;
     }
 
-    const amountInCents = Math.round(Number(order.total) * 100);
+    if (order.expiresAt && order.expiresAt < new Date()) {
+      res.status(400).json({ error: 'This order reservation has expired. Please create a new order.' });
+      return;
+    }
 
-    let paymentIntent;
-    
-    if (STRIPE_SECRET_KEY === 'sk_test_placeholder') {
-      paymentIntent = { id: `pi_mock_${Date.now()}`, client_secret: `pi_mock_secret_${Date.now()}` };
-    } else {
+    const total = Number(order.total);
+    if (isNaN(total) || total <= 0) {
+      res.status(400).json({ error: 'Invalid order amount' });
+      return;
+    }
+
+    const amountInCents = Math.round(total * 100);
+
+    let paymentIntent: Stripe.PaymentIntent | null = null;
+    const pendingPayment = order.payments.find(p => p.status === PaymentModelStatus.PENDING && p.providerRequestId);
+
+    if (pendingPayment?.providerRequestId) {
+      try {
+        const existingPi = await stripe.paymentIntents.retrieve(pendingPayment.providerRequestId);
+        if (
+          ['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingPi.status) &&
+          existingPi.amount === amountInCents &&
+          existingPi.currency.toLowerCase() === 'kes'
+        ) {
+          paymentIntent = existingPi;
+        }
+      } catch (e) {
+        console.warn(`Could not reuse existing PaymentIntent ${pendingPayment.providerRequestId}, creating a new one.`);
+      }
+    }
+
+    if (!paymentIntent) {
       paymentIntent = await stripe.paymentIntents.create({
         amount: amountInCents,
         currency: 'kes',
-        metadata: { orderNumber: order.orderNumber, orderId: order.id }
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          orderNumber: order.orderNumber,
+          orderId: order.id
+        },
+        description: `Order ${order.orderNumber}`
+      });
+
+      await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          provider: PaymentProvider.STRIPE,
+          status: PaymentModelStatus.PENDING,
+          amount: order.total,
+          currency: 'KES',
+          providerRequestId: paymentIntent.id,
+          metadata: {
+            paymentIntentId: paymentIntent.id,
+            currency: paymentIntent.currency,
+            amount: paymentIntent.amount
+          }
+        }
       });
     }
 
-    await prisma.payment.create({
-      data: {
-        orderId: order.id,
-        provider: PaymentProvider.STRIPE,
-        status: PaymentModelStatus.PENDING,
-        amount: Number(order.total),
-        providerRequestId: paymentIntent.id
-      }
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      publishableKey
     });
-
-    res.json({ clientSecret: paymentIntent.client_secret });
-  } catch (error) {
-    console.error('Stripe create error:', error);
-    res.status(500).json({ error: 'Failed to create Stripe payment' });
+  } catch (error: any) {
+    console.error('Stripe payment creation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create Stripe payment' });
   }
 };
 
 export const stripeWebhook = async (req: Request, res: Response): Promise<void> => {
   const sig = req.headers['stripe-signature'];
 
-  let event;
+  if (!sig || typeof sig !== 'string') {
+    res.status(400).send('Webhook Error: Missing Stripe signature header');
+    return;
+  }
+
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret || webhookSecret === 'whsec_placeholder') {
+    console.error('Stripe webhook received but STRIPE_WEBHOOK_SECRET is unconfigured.');
+    res.status(503).send('Stripe webhook signing secret is not configured');
+    return;
+  }
+
+  let stripe: Stripe;
   try {
-    if (STRIPE_WEBHOOK_SECRET === 'whsec_placeholder') {
-      event = req.body; // Mock behavior
-    } else {
-      event = stripe.webhooks.constructEvent(req.body, sig as string, STRIPE_WEBHOOK_SECRET);
-    }
+    stripe = getStripeInstance();
+  } catch {
+    res.status(503).send('Stripe is not configured');
+    return;
+  }
+
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
-    res.status(400).send(`Webhook Error: ${err.message}`);
+    console.error('Stripe signature verification failed:', err.message);
+    res.status(400).send(`Webhook signature verification failed: ${err.message}`);
     return;
   }
 
   try {
     if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      
+      const paymentIntentId = paymentIntent.id;
+
       const payment = await prisma.payment.findUnique({
-        where: { providerRequestId: paymentIntent.id }
+        where: { providerRequestId: paymentIntentId },
+        include: {
+          order: {
+            include: { items: true }
+          }
+        }
       });
 
-      if (payment && payment.status === PaymentModelStatus.PENDING) {
-        await prisma.$transaction(async (tx) => {
-          await tx.payment.update({
-            where: { id: payment.id },
-            data: {
-              status: PaymentModelStatus.PAID,
-              providerTransactionId: (paymentIntent.latest_charge as string) || paymentIntent.id,
-              metadata: paymentIntent as any
-            }
-          });
+      if (!payment) {
+        console.warn(`Payment not found for PaymentIntent: ${paymentIntentId}`);
+        res.status(200).json({ received: true, warning: 'Payment record not found' });
+        return;
+      }
 
-          const updateResult = await tx.order.updateMany({
-            where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
-            data: {
-              paymentStatus: 'PAID',
-              status: 'PROCESSING'
-            }
-          });
+      // Idempotency: If payment is already marked as PAID, acknowledge without re-deducting stock
+      if (payment.status === PaymentModelStatus.PAID) {
+        res.status(200).json({ received: true, message: 'Payment already processed' });
+        return;
+      }
 
-          if (updateResult.count === 1) {
-            const order = await tx.order.findUnique({
-              where: { id: payment.orderId },
-              include: { items: true }
-            });
-            
-            if (order) {
-              for (const item of order.items) {
-                if (item.variantId) {
-                  await tx.productVariant.update({
-                    where: { id: item.variantId },
-                    data: {
-                      stock: { decrement: item.quantity },
-                      reservedStock: { decrement: item.quantity }
-                    }
-                  });
-                }
-              }
+      const order = payment.order;
+      if (!order) {
+        res.status(200).json({ received: true, warning: 'Order not found for payment' });
+        return;
+      }
+
+      // Verify amount and currency against authoritative order record
+      const expectedAmountInCents = Math.round(Number(order.total) * 100);
+      if (paymentIntent.amount !== expectedAmountInCents || paymentIntent.currency.toLowerCase() !== 'kes') {
+        console.error(`Amount/currency mismatch for order ${order.orderNumber}: expected ${expectedAmountInCents} kes, received ${paymentIntent.amount} ${paymentIntent.currency}`);
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentModelStatus.FAILED,
+            failureReason: `Amount or currency mismatch: expected ${expectedAmountInCents} kes, got ${paymentIntent.amount} ${paymentIntent.currency}`,
+            metadata: {
+              paymentIntentId: paymentIntent.id,
+              receivedAmount: paymentIntent.amount,
+              receivedCurrency: paymentIntent.currency
             }
           }
         });
+        res.status(200).json({ received: true, error: 'Amount or currency mismatch' });
+        return;
       }
+
+      // If the order has already been cancelled/expired, record payment for manual admin action
+      // but DO NOT deduct stock or release reservations that were already released!
+      if (order.status === 'CANCELLED') {
+        console.warn(`Payment succeeded for already CANCELLED order ${order.orderNumber}. Preserving stock and marking payment for review.`);
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentModelStatus.PAID,
+            providerTransactionId: (paymentIntent.latest_charge as string) || paymentIntent.id,
+            receipt: paymentIntent.id,
+            failureReason: 'Payment succeeded after order was cancelled/expired. Requires manual review.',
+            metadata: {
+              paymentIntentId: paymentIntent.id,
+              status: paymentIntent.status,
+              amount: paymentIntent.amount,
+              currency: paymentIntent.currency,
+              orderWasCancelled: true
+            }
+          }
+        });
+        res.status(200).json({ received: true, note: 'Payment recorded on cancelled order' });
+        return;
+      }
+
+      // Normal valid payment: atomically update payment, order, and inventory in a transaction
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentModelStatus.PAID,
+            providerTransactionId: (paymentIntent.latest_charge as string) || paymentIntent.id,
+            receipt: paymentIntent.id,
+            failureReason: null,
+            metadata: {
+              paymentIntentId: paymentIntent.id,
+              status: paymentIntent.status,
+              amount: paymentIntent.amount,
+              currency: paymentIntent.currency
+            }
+          }
+        });
+
+        const updateResult = await tx.order.updateMany({
+          where: { id: order.id, status: 'PENDING_PAYMENT' },
+          data: {
+            paymentStatus: 'PAID',
+            status: 'PROCESSING'
+          }
+        });
+
+        // Deduct physical stock and release reservation EXACTLY ONCE
+        if (updateResult.count === 1) {
+          for (const item of order.items) {
+            if (item.variantId) {
+              await tx.productVariant.update({
+                where: { id: item.variantId },
+                data: {
+                  stock: { decrement: item.quantity },
+                  reservedStock: { decrement: item.quantity }
+                }
+              });
+            }
+          }
+        }
+      });
     } else if (event.type === 'payment_intent.payment_failed') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      const paymentIntentId = paymentIntent.id;
+
       const payment = await prisma.payment.findUnique({
-        where: { providerRequestId: paymentIntent.id }
+        where: { providerRequestId: paymentIntentId }
       });
 
       if (payment && payment.status === PaymentModelStatus.PENDING) {
-        await prisma.$transaction(async (tx) => {
-          await tx.payment.update({
-            where: { id: payment.id },
-            data: {
-              status: PaymentModelStatus.FAILED,
-              failureReason: paymentIntent.last_payment_error?.message,
-              metadata: paymentIntent as any
-            }
-          });
-
-          const updateResult = await tx.order.updateMany({
-            where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
-            data: { status: 'CANCELLED' }
-          });
-
-          if (updateResult.count === 1) {
-            const order = await tx.order.findUnique({
-              where: { id: payment.orderId },
-              include: { items: true }
-            });
-
-            if (order) {
-              for (const item of order.items) {
-                if (item.variantId) {
-                  await tx.productVariant.update({
-                    where: { id: item.variantId },
-                    data: { reservedStock: { decrement: item.quantity } }
-                  });
-                }
-              }
+        const failureMessage = paymentIntent.last_payment_error?.message || 'Payment attempt failed';
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentModelStatus.FAILED,
+            failureReason: failureMessage,
+            metadata: {
+              paymentIntentId: paymentIntent.id,
+              errorCode: paymentIntent.last_payment_error?.code,
+              declineCode: paymentIntent.last_payment_error?.decline_code
             }
           }
         });
+        // Note: Do NOT cancel the order or release reserved stock here.
+        // Customer is allowed to retry within the 30-minute reservation window.
       }
     }
 
     res.json({ received: true });
   } catch (error) {
-    console.error('Stripe webhook handling error:', error);
+    console.error('Stripe webhook processing error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 };
@@ -437,11 +575,11 @@ export const stripeWebhook = async (req: Request, res: Response): Promise<void> 
 export const getPaymentStatus = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const orderNumber = req.params.orderNumber as string;
-    const order = await prisma.order.findUnique({ 
-      where: { orderNumber }, 
-      include: { payments: { orderBy: { createdAt: 'desc' } } } 
+    const order = await prisma.order.findUnique({
+      where: { orderNumber },
+      include: { payments: { orderBy: { createdAt: 'desc' } } }
     });
-    
+
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -452,7 +590,11 @@ export const getPaymentStatus = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    res.json({ paymentStatus: order.paymentStatus, latestPayment: order.payments[0] || null });
+    res.json({
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.status,
+      latestPayment: order.payments[0] || null
+    });
   } catch (error) {
     console.error('Payment status check error:', error);
     res.status(500).json({ error: 'Failed to fetch status' });

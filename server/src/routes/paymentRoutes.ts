@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import express from 'express';
-import { initiateMpesa, mpesaCallback, createStripePayment, stripeWebhook, getPaymentStatus } from '../controllers/paymentController';
+import { initiateMpesa, mpesaCallback, createStripePayment, stripeWebhook, getPaymentStatus, getStripeConfig } from '../controllers/paymentController';
 import { optionalAuthenticate } from '../middleware/auth';
 
 const router = Router();
@@ -10,6 +10,7 @@ router.post('/mpesa/stk-push', optionalAuthenticate, initiateMpesa);
 router.post('/mpesa/callback', mpesaCallback);
 
 // Stripe
+router.get('/stripe/config', getStripeConfig);
 router.post('/stripe/create', optionalAuthenticate, createStripePayment);
 // Stripe webhook body is parsed as raw buffer in index.ts before express.json()
 router.post('/stripe/webhook', stripeWebhook);

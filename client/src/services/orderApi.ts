@@ -88,3 +88,13 @@ export const getPaymentStatus = async (orderNumber: string) => {
   }
   return response.json();
 };
+
+export const getStripeConfig = async (): Promise<{ publishableKey: string }> => {
+  const response = await fetch(`${API_URL}/payments/stripe/config`, {
+    headers: getAuthHeaders()
+  });
+  if (!response.ok) {
+    return { publishableKey: '' };
+  }
+  return response.json();
+};
