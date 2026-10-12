@@ -2,18 +2,49 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartItem, Product, ProductVariant } from '../types';
 
+export interface PendingOrderItemSnapshot {
+  variantId: string;
+  quantity: number;
+}
+
+export interface PendingOrderRef {
+  orderNumber: string;
+  itemsSnapshot: PendingOrderItemSnapshot[];
+  createdAt?: number;
+}
+
 interface CartState {
   cart: CartItem[];
+  pendingOrder: PendingOrderRef | null;
   addToCart: (product: Product, variant: ProductVariant, quantity: number) => void;
   removeFromCart: (cartItemId: string) => void;
   updateQuantity: (cartItemId: string, quantity: number) => void;
   clearCart: () => void;
+  setPendingOrder: (pendingOrder: PendingOrderRef | null) => void;
+  clearPendingOrder: () => void;
 }
+
+export const isCartMatchingSnapshot = (
+  cart: CartItem[],
+  snapshot: Array<{ variantId: string; quantity: number }> | undefined | null
+): boolean => {
+  if (!snapshot || !cart) return false;
+  if (cart.length !== snapshot.length) return false;
+
+  for (const item of cart) {
+    const match = snapshot.find((s) => s.variantId === item.variantId);
+    if (!match || match.quantity !== item.quantity) {
+      return false;
+    }
+  }
+  return true;
+};
 
 export const useCartStore = create<CartState>()(
   persist(
     (set) => ({
       cart: [],
+      pendingOrder: null,
 
       addToCart: (product, variant, quantity) => {
         set((state) => {
@@ -56,7 +87,11 @@ export const useCartStore = create<CartState>()(
         }));
       },
 
-      clearCart: () => set({ cart: [] }),
+      clearCart: () => set({ cart: [], pendingOrder: null }),
+
+      setPendingOrder: (pendingOrder) => set({ pendingOrder }),
+
+      clearPendingOrder: () => set({ pendingOrder: null }),
     }),
     {
       name: 'clothing_store_cart',

@@ -1,12 +1,10 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../config/db';
 import { AuthRequest } from '../middleware/auth';
-
-const prisma = new PrismaClient();
 
 export const createOrder = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { items, customerName, customerEmail, customerPhone, deliveryAddress, county, deliveryNotes } = req.body;
+    const { items, customerName, customerEmail, customerPhone, deliveryAddress, county, deliveryNotes, replaceOrderNumber } = req.body;
 
     if (!items || items.length === 0) {
       res.status(400).json({ error: 'Order must contain at least one item' });
@@ -17,6 +15,32 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
     const orderItemsData: any[] = [];
 
     const result = await prisma.$transaction(async (tx) => {
+      // If replacing a previous pending order, cancel it and release its reservations atomically
+      if (replaceOrderNumber) {
+        const oldOrder = await tx.order.findUnique({
+          where: { orderNumber: replaceOrderNumber },
+          include: { items: true }
+        });
+        if (oldOrder && oldOrder.status === 'PENDING_PAYMENT' && oldOrder.paymentStatus === 'UNPAID') {
+          if (!oldOrder.userId || (req.user && (req.user.userId === oldOrder.userId || req.user.role === 'ADMIN'))) {
+            const cancelRes = await tx.order.updateMany({
+              where: { id: oldOrder.id, status: 'PENDING_PAYMENT' },
+              data: { status: 'CANCELLED' }
+            });
+            if (cancelRes.count === 1) {
+              for (const oldItem of oldOrder.items) {
+                if (oldItem.variantId) {
+                  await tx.productVariant.update({
+                    where: { id: oldItem.variantId },
+                    data: { reservedStock: { decrement: oldItem.quantity } }
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
       for (const item of items) {
         const { productId, variantId, quantity } = item;
         
@@ -196,3 +220,64 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ error: 'Failed to update order status' });
   }
 };
+
+export const cancelOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const orderNumber = req.params.orderNumber as string;
+
+    const order = await prisma.order.findUnique({
+      where: { orderNumber },
+      include: { items: true }
+    });
+
+    if (!order) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+
+    if (order.userId && order.userId !== req.user?.userId && req.user?.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    if (order.status === 'CANCELLED') {
+      res.json({ message: 'Order is already cancelled', order });
+      return;
+    }
+
+    if (order.paymentStatus === 'PAID' || order.status === 'PROCESSING') {
+      res.status(400).json({ error: 'Cannot cancel an order that has already been paid' });
+      return;
+    }
+
+    // Atomically transition from PENDING_PAYMENT to CANCELLED and release reserved stock
+    await prisma.$transaction(async (tx) => {
+      const updateResult = await tx.order.updateMany({
+        where: { id: order.id, status: 'PENDING_PAYMENT' },
+        data: { status: 'CANCELLED' }
+      });
+
+      if (updateResult.count === 1) {
+        for (const item of order.items) {
+          if (item.variantId) {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: { reservedStock: { decrement: item.quantity } }
+            });
+          }
+        }
+      }
+    });
+
+    const updated = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: { items: true }
+    });
+
+    res.json({ message: 'Order cancelled and reservations released', order: updated });
+  } catch (error: any) {
+    console.error('Cancel order error:', error);
+    res.status(500).json({ error: error.message || 'Failed to cancel order' });
+  }
+};
+

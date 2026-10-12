@@ -14,6 +14,7 @@ export interface CreateOrderPayload {
   county: string;
   deliveryNotes?: string;
   items: OrderItemPayload[];
+  replaceOrderNumber?: string;
 }
 
 const getAuthHeaders = (): Record<string, string> => {
@@ -98,3 +99,19 @@ export const getStripeConfig = async (): Promise<{ publishableKey: string }> => 
   }
   return response.json();
 };
+
+export const cancelOrder = async (orderNumber: string) => {
+  const response = await fetch(`${API_URL}/orders/${orderNumber}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    }
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to cancel order');
+  }
+  return response.json();
+};
+

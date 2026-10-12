@@ -65,6 +65,11 @@ export const initiateMpesa = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
+    if (order.expiresAt && order.expiresAt < new Date()) {
+      res.status(400).json({ error: 'This order reservation has expired. Please create a new order.' });
+      return;
+    }
+
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
     if (normalizedPhone.length !== 12) {
       res.status(400).json({ error: 'Invalid Kenyan phone number format' });

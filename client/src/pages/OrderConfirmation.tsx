@@ -5,6 +5,7 @@ import { getOrder, initiateMpesa, createStripePayment, getPaymentStatus } from '
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import type { Stripe } from '@stripe/stripe-js';
 import { getStripePromise } from '../utils/stripe';
+import { useCartStore } from '../store/cartStore';
 
 interface CheckoutFormProps {
   orderNumber: string;
@@ -156,6 +157,10 @@ export const OrderConfirmation: React.FC = () => {
       try {
         const data = await getOrder(orderNumber);
         setOrder(data);
+        if (data.paymentStatus === 'PAID') {
+          useCartStore.getState().clearCart();
+          useCartStore.getState().clearPendingOrder();
+        }
         if (data.customerPhone) {
           setMpesaPhone(data.customerPhone);
         }
@@ -180,6 +185,8 @@ export const OrderConfirmation: React.FC = () => {
             setOrder((prev: any) => ({ ...prev, paymentStatus: 'PAID', status: statusData.orderStatus || 'PROCESSING' }));
             setPolling(false);
             setMpesaMessage('Payment received successfully!');
+            useCartStore.getState().clearCart();
+            useCartStore.getState().clearPendingOrder();
           } else if (statusData.latestPayment?.status === 'FAILED') {
             setPolling(false);
             setMpesaError(statusData.latestPayment.failureReason || 'Payment failed.');
@@ -314,6 +321,8 @@ export const OrderConfirmation: React.FC = () => {
                         customerEmail={order.customerEmail}
                         onPaymentSuccess={() => {
                           setOrder((prev: any) => ({ ...prev, paymentStatus: 'PAID', status: 'PROCESSING' }));
+                          useCartStore.getState().clearCart();
+                          useCartStore.getState().clearPendingOrder();
                         }}
                       />
                     </Elements>

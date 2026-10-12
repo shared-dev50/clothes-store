@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCartStore } from '../store/cartStore';
+import { useCartStore, isCartMatchingSnapshot } from '../store/cartStore';
 import { ArrowLeft, CreditCard, Smartphone, ShieldCheck, AlertCircle } from 'lucide-react';
-import { createOrder, initiateMpesa, createStripePayment, getPaymentStatus } from '../services/orderApi';
+import { createOrder, initiateMpesa, createStripePayment, getPaymentStatus, getOrder, cancelOrder } from '../services/orderApi';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
@@ -42,6 +42,7 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
 }) => {
   const stripe = useStripe();
   const elements = useElements();
+  const { pendingOrder, setPendingOrder } = useCartStore();
   const [nameOnCard, setNameOnCard] = useState(`${formData.firstName} ${formData.lastName}`.trim());
   const [cardError, setCardError] = useState<string | null>(null);
 
@@ -76,11 +77,16 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
             productId: item.productId,
             variantId: item.variantId,
             quantity: item.quantity
-          }))
+          })),
+          replaceOrderNumber: pendingOrder?.orderNumber
         };
 
         order = await createOrder(payload);
         setActiveOrder(order);
+        setPendingOrder({
+          orderNumber: order.orderNumber,
+          itemsSnapshot: cart.map(item => ({ variantId: item.variantId, quantity: item.quantity }))
+        });
       }
 
       // Initialize Stripe payment on backend
@@ -224,7 +230,7 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
 };
 
 export const Checkout: React.FC = () => {
-  const { cart, clearCart } = useCartStore();
+  const { cart, clearCart, pendingOrder, setPendingOrder, clearPendingOrder } = useCartStore();
   const subtotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -232,7 +238,9 @@ export const Checkout: React.FC = () => {
   const [step, setStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('card');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isVerifyingOrder, setIsVerifyingOrder] = useState(false);
   const [activeOrder, setActiveOrder] = useState<any>(null);
+  const [cartMismatchWarning, setCartMismatchWarning] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     email: user?.email || '',
@@ -261,6 +269,90 @@ export const Checkout: React.FC = () => {
     });
   }, []);
 
+  // Pending order recovery effect
+  useEffect(() => {
+    let isMounted = true;
+    const verifyAndResumePendingOrder = async () => {
+      if (!pendingOrder?.orderNumber) {
+        return;
+      }
+
+      try {
+        setIsVerifyingOrder(true);
+        const order = await getOrder(pendingOrder.orderNumber);
+        if (!isMounted) return;
+
+        // 1. If paid or processing: clear checkout references and navigate to confirmation
+        if (order.paymentStatus === 'PAID' || order.status === 'PROCESSING') {
+          clearPendingOrder();
+          clearCart();
+          toast.success('Your order has already been paid!');
+          navigate(`/order-confirmation/${order.orderNumber}`);
+          return;
+        }
+
+        // 2. If cancelled: clear stale reference
+        if (order.status === 'CANCELLED') {
+          clearPendingOrder();
+          toast('Previous checkout was cancelled. Starting a fresh order.', { icon: 'ℹ️' });
+          return;
+        }
+
+        // 3. If expired: clear stale reference
+        if (order.expiresAt && new Date(order.expiresAt).getTime() <= Date.now()) {
+          clearPendingOrder();
+          toast('Previous checkout reservation expired. Starting a fresh order.', { icon: '⏰' });
+          return;
+        }
+
+        // 4. Verify order is in pending payment status
+        if (order.status !== 'PENDING_PAYMENT') {
+          clearPendingOrder();
+          return;
+        }
+
+        // 5. Verify exact cart contents match backend order items
+        const matchesCart = isCartMatchingSnapshot(cart, order.items);
+        if (!matchesCart) {
+          setCartMismatchWarning(
+            `You have a pending order #${order.orderNumber}, but your cart has changed. Abandon it to proceed with your current cart.`
+          );
+          return;
+        }
+
+        // 6. Eligible pending order: safely resume without creating a duplicate!
+        setActiveOrder(order);
+        setFormData(prev => ({
+          ...prev,
+          email: order.customerEmail || prev.email,
+          firstName: order.customerName ? order.customerName.split(' ')[0] : prev.firstName,
+          lastName: order.customerName ? order.customerName.split(' ').slice(1).join(' ') : prev.lastName,
+          address: order.deliveryAddress && order.deliveryAddress !== 'N/A' ? order.deliveryAddress : prev.address,
+          city: order.county && order.county !== 'N/A' ? order.county : prev.city,
+          phone: order.customerPhone || prev.phone,
+        }));
+        if (order.customerPhone) {
+          setMpesaPhone(order.customerPhone);
+        }
+        setStep(2);
+        toast.success(`Resumed pending order #${order.orderNumber}`, { id: 'order-resumed' });
+      } catch (err: any) {
+        console.warn('Could not verify pending order:', err);
+        clearPendingOrder();
+      } finally {
+        if (isMounted) {
+          setIsVerifyingOrder(false);
+        }
+      }
+    };
+
+    verifyAndResumePendingOrder();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const total = subtotal;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -269,6 +361,25 @@ export const Checkout: React.FC = () => {
     if (name === 'phone') {
       setMpesaPhone(value);
     }
+  };
+
+  const handleAbandonOrder = async () => {
+    const orderNum = activeOrder?.orderNumber || pendingOrder?.orderNumber;
+    if (orderNum) {
+      try {
+        setIsProcessing(true);
+        await cancelOrder(orderNum);
+        toast.success(`Order #${orderNum} cancelled and reserved inventory released.`);
+      } catch (e: any) {
+        console.warn('Failed to cancel order:', e);
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+    setActiveOrder(null);
+    clearPendingOrder();
+    setCartMismatchWarning(null);
+    setStep(1);
   };
 
   const handleMpesaOrder = async () => {
@@ -290,11 +401,16 @@ export const Checkout: React.FC = () => {
           productId: item.productId,
           variantId: item.variantId,
           quantity: item.quantity
-        }))
+        })),
+        replaceOrderNumber: pendingOrder?.orderNumber
       };
 
       const order = activeOrder || (await createOrder(payload));
       setActiveOrder(order);
+      setPendingOrder({
+        orderNumber: order.orderNumber,
+        itemsSnapshot: cart.map(item => ({ variantId: item.variantId, quantity: item.quantity }))
+      });
 
       const phoneToUse = mpesaPhone || formData.phone;
       if (phoneToUse) {
@@ -306,6 +422,7 @@ export const Checkout: React.FC = () => {
       }
 
       clearCart();
+      clearPendingOrder();
       toast.success('Order created! Please complete payment.');
       navigate(`/order-confirmation/${order.orderNumber}`);
     } catch (err: any) {
@@ -317,6 +434,7 @@ export const Checkout: React.FC = () => {
 
   const handleCardSuccess = (orderNumber: string) => {
     clearCart();
+    clearPendingOrder();
     toast.success('Payment completed successfully!');
     navigate(`/order-confirmation/${orderNumber}`);
   };
@@ -332,6 +450,54 @@ export const Checkout: React.FC = () => {
 
         {/* Left Form Area */}
         <div className="w-full lg:w-3/5">
+          {/* Recovery and Mismatch Notices */}
+          {isVerifyingOrder && (
+            <div className="mb-6 p-3 bg-stone-100 border border-brand-stone/40 rounded text-brand-taupe text-xs flex items-center gap-2 animate-in fade-in">
+              <div className="w-3.5 h-3.5 border-2 border-brand-black border-t-transparent rounded-full animate-spin shrink-0" />
+              <span>Verifying active checkout session...</span>
+            </div>
+          )}
+
+          {cartMismatchWarning && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded text-amber-900 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={18} className="text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-semibold">Cart Changed Since Pending Order</p>
+                  <p className="text-xs text-amber-800">{cartMismatchWarning}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAbandonOrder}
+                disabled={isProcessing}
+                className="px-3 py-1.5 bg-amber-700 text-white text-xs font-semibold uppercase tracking-wider rounded hover:bg-amber-800 transition-colors shrink-0"
+              >
+                Release Old Reservation
+              </button>
+            </div>
+          )}
+
+          {activeOrder && (
+            <div className="mb-6 p-4 bg-brand-stone/10 border border-brand-stone/40 rounded text-brand-black text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={18} className="text-green-600 shrink-0" />
+                <div>
+                  <p className="font-semibold uppercase tracking-wider text-xs">Resuming Order #{activeOrder.orderNumber}</p>
+                  <p className="text-xs text-brand-taupe">Items are reserved. Complete payment below or cancel to start over.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAbandonOrder}
+                disabled={isProcessing}
+                className="text-xs font-semibold uppercase tracking-wider text-red-600 hover:text-red-800 hover:underline shrink-0"
+              >
+                Cancel & Release Items
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-brand-taupe mb-8">
             <span className={step === 1 ? "text-brand-black font-bold" : ""}>Information</span>
             <ArrowLeft size={12} className="rotate-180" />
