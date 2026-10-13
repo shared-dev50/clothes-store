@@ -6,7 +6,9 @@ import productRoutes from './routes/productRoutes';
 import healthRoutes from './routes/healthRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
-dotenv.config();
+if (process.env.NODE_ENV !== 'test') {
+  dotenv.config();
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;

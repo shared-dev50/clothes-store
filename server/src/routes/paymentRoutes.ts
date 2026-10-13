@@ -12,7 +12,6 @@ router.post('/mpesa/callback', mpesaCallback);
 // Stripe
 router.get('/stripe/config', getStripeConfig);
 router.post('/stripe/create', optionalAuthenticate, createStripePayment);
-// Stripe webhook body is parsed as raw buffer in index.ts before express.json()
 router.post('/stripe/webhook', stripeWebhook);
 
 // Status
