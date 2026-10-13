@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { PaymentProvider, PaymentModelStatus } from '@prisma/client';
 import prisma from '../config/db';
 import { AuthRequest } from '../middleware/auth';
@@ -13,6 +14,34 @@ const DARAJA_SHORTCODE = process.env.DARAJA_SHORTCODE || '174379';
 const DARAJA_PASSKEY = process.env.DARAJA_PASSKEY || 'placeholder_passkey';
 const DARAJA_CALLBACK_URL = process.env.DARAJA_CALLBACK_URL || 'https://my-domain.com/api/payments/mpesa/callback';
 const DARAJA_ENVIRONMENT = process.env.DARAJA_ENVIRONMENT || 'sandbox';
+const DARAJA_BASE_URL = DARAJA_ENVIRONMENT === 'sandbox'
+  ? 'https://sandbox.safaricom.co.ke'
+  : 'https://api.safaricom.co.ke';
+
+/** Safaricom tokens live for 3599s; refresh when fewer than 2 minutes remain. */
+const DARAJA_TOKEN_DEFAULT_TTL_SECONDS = 3599;
+const DARAJA_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000;
+
+/** Minimum gap between STK pushes for the same order while a prompt is still pending. */
+const MPESA_STK_COOLDOWN_MS = 2 * 60 * 1000;
+
+/** East Africa Time is a fixed UTC+3 offset (Kenya observes no DST). */
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+interface DarajaTokenResponse {
+  access_token?: string;
+  expires_in?: string | number;
+}
+
+interface DarajaStkPushResponse {
+  MerchantRequestID?: string;
+  CheckoutRequestID?: string;
+  ResponseCode?: string;
+  ResponseDescription?: string;
+  CustomerMessage?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
 
 const normalizePhoneNumber = (phone: string): string => {
   let cleaned = phone.replace(/\D/g, '');
@@ -24,20 +53,66 @@ const normalizePhoneNumber = (phone: string): string => {
   return cleaned;
 };
 
-const getDarajaToken = async (): Promise<string> => {
+/**
+ * Returns the Daraja `Timestamp` (YYYYMMDDHHmmss) in Nairobi time.
+ * Shifting the epoch by +3h and reading the UTC fields yields EAT wall-clock time
+ * independent of the server's local timezone.
+ */
+export const getDarajaTimestamp = (date: Date = new Date()): string => {
+  return new Date(date.getTime() + EAT_OFFSET_MS)
+    .toISOString()          // e.g. 2026-10-13T21:29:59.123Z (already shifted to EAT)
+    .replace(/[^0-9]/g, '') // 20261013212959123
+    .slice(0, 14);          // 20261013212959
+};
+
+// In-memory token cache (per process). `inflightTokenRequest` de-duplicates concurrent
+// refreshes so a burst of checkouts triggers a single OAuth call.
+let cachedDarajaToken: { token: string; expiresAt: number } | null = null;
+let inflightTokenRequest: Promise<string> | null = null;
+
+const invalidateDarajaToken = (): void => {
+  cachedDarajaToken = null;
+};
+
+export const getDarajaToken = async (): Promise<string> => {
   if (DARAJA_CONSUMER_KEY === 'placeholder_consumer_key') {
     return 'mock_daraja_token';
   }
-  
-  const auth = Buffer.from(`${DARAJA_CONSUMER_KEY}:${DARAJA_CONSUMER_SECRET}`).toString('base64');
-  const url = DARAJA_ENVIRONMENT === 'sandbox' 
-    ? 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
-    : 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
-  const response = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
-  if (!response.ok) throw new Error('Failed to generate Daraja token');
-  const data = await response.json();
-  return data.access_token;
+  if (cachedDarajaToken && Date.now() < cachedDarajaToken.expiresAt - DARAJA_TOKEN_REFRESH_BUFFER_MS) {
+    return cachedDarajaToken.token;
+  }
+
+  if (inflightTokenRequest) {
+    return inflightTokenRequest;
+  }
+
+  inflightTokenRequest = (async () => {
+    const auth = Buffer.from(`${DARAJA_CONSUMER_KEY}:${DARAJA_CONSUMER_SECRET}`).toString('base64');
+    const response = await fetch(`${DARAJA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials`, {
+      headers: { Authorization: `Basic ${auth}` }
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to generate Daraja token (HTTP ${response.status})`);
+    }
+
+    const data = (await response.json()) as DarajaTokenResponse;
+    if (!data.access_token) {
+      throw new Error('Daraja token response did not include an access_token');
+    }
+
+    // Daraja returns expires_in as a string ("3599"); fall back to the documented TTL.
+    const ttlSeconds = Number(data.expires_in) > 0 ? Number(data.expires_in) : DARAJA_TOKEN_DEFAULT_TTL_SECONDS;
+    cachedDarajaToken = {
+      token: data.access_token,
+      expiresAt: Date.now() + ttlSeconds * 1000
+    };
+    return data.access_token;
+  })().finally(() => {
+    inflightTokenRequest = null;
+  });
+
+  return inflightTokenRequest;
 };
 
 export const initiateMpesa = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -77,17 +152,75 @@ export const initiateMpesa = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     const amount = Math.round(Number(order.total));
-    const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-    const password = Buffer.from(`${DARAJA_SHORTCODE}${DARAJA_PASSKEY}${timestamp}`).toString('base64');
 
-    let checkoutRequestId = `MOCK_REQ_${Date.now()}`;
+    // --- STK push cooldown -------------------------------------------------------
+    // Check-and-claim must be atomic: a plain "find, then call Daraja, then create"
+    // lets two concurrent requests both pass the check during the Daraja round-trip.
+    // We lock the order row, check for a recent PENDING M-Pesa payment, and insert our
+    // own PENDING row before releasing the lock. The Daraja HTTP call happens outside
+    // the transaction so no DB lock is held across network I/O.
+    const claim = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "orders" WHERE id = ${order.id} FOR UPDATE`;
+
+      const recentPending = await tx.payment.findFirst({
+        where: {
+          orderId: order.id,
+          provider: PaymentProvider.MPESA,
+          status: PaymentModelStatus.PENDING,
+          createdAt: { gt: new Date(Date.now() - MPESA_STK_COOLDOWN_MS) }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (recentPending) {
+        return { rateLimited: true as const, lastAttemptAt: recentPending.createdAt };
+      }
+
+      const pendingPayment = await tx.payment.create({
+        data: {
+          orderId: order.id,
+          provider: PaymentProvider.MPESA,
+          status: PaymentModelStatus.PENDING,
+          amount: amount,
+          phoneNumber: normalizedPhone
+          // providerRequestId is set once Daraja returns a CheckoutRequestID
+        }
+      });
+
+      return { rateLimited: false as const, payment: pendingPayment };
+    });
+
+    if (claim.rateLimited) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((claim.lastAttemptAt.getTime() + MPESA_STK_COOLDOWN_MS - Date.now()) / 1000)
+      );
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      res.status(429).json({
+        error: 'An M-Pesa payment prompt was already sent for this order. Please check your phone and enter your M-Pesa PIN to complete payment.',
+        retryAfterSeconds
+      });
+      return;
+    }
+
+    const pendingPayment = claim.payment;
+
+    // Release the cooldown slot if the push never reached the customer's phone,
+    // so a failed attempt does not block retries for 2 minutes.
+    const markAttemptFailed = (reason: string, metadata?: object) =>
+      prisma.payment.update({
+        where: { id: pendingPayment.id },
+        data: { status: PaymentModelStatus.FAILED, failureReason: reason, ...(metadata ? { metadata } : {}) }
+      });
+
+    // Unguessable mock IDs: the callback endpoint is unauthenticated, so a predictable
+    // ID (e.g. Date.now()) would let anyone forge a success callback for a mock payment.
+    let checkoutRequestId = `MOCK_REQ_${randomUUID()}`;
     let customerMessage = 'Success. Request accepted for processing';
 
     if (DARAJA_CONSUMER_KEY !== 'placeholder_consumer_key') {
-      const token = await getDarajaToken();
-      const url = DARAJA_ENVIRONMENT === 'sandbox'
-        ? 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
-        : 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
+      const timestamp = getDarajaTimestamp();
+      const password = Buffer.from(`${DARAJA_SHORTCODE}${DARAJA_PASSKEY}${timestamp}`).toString('base64');
 
       const payload = {
         BusinessShortCode: DARAJA_SHORTCODE,
@@ -103,19 +236,38 @@ export const initiateMpesa = async (req: AuthRequest, res: Response): Promise<vo
         TransactionDesc: `Payment for Order ${orderNumber}`
       };
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+      let data: DarajaStkPushResponse;
+      try {
+        const token = await getDarajaToken();
+        const response = await fetch(`${DARAJA_BASE_URL}/mpesa/stkpush/v1/processrequest`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
 
-      const data = await response.json();
+        // A revoked/expired token should not stay cached until its nominal expiry.
+        if (response.status === 401) {
+          invalidateDarajaToken();
+        }
+
+        data = (await response.json()) as DarajaStkPushResponse;
+      } catch (err: any) {
+        await markAttemptFailed(`STK push request failed: ${err?.message || 'unknown error'}`);
+        throw err;
+      }
 
       if (data.errorMessage) {
+        await markAttemptFailed(data.errorMessage, { errorCode: data.errorCode, errorMessage: data.errorMessage });
         res.status(400).json({ error: data.errorMessage });
+        return;
+      }
+
+      if (!data.CheckoutRequestID) {
+        await markAttemptFailed('Daraja response did not include a CheckoutRequestID', { ...data });
+        res.status(502).json({ error: 'M-Pesa did not accept the payment request. Please try again.' });
         return;
       }
 
@@ -123,15 +275,9 @@ export const initiateMpesa = async (req: AuthRequest, res: Response): Promise<vo
       customerMessage = data.CustomerMessage || customerMessage;
     }
 
-    await prisma.payment.create({
-      data: {
-        orderId: order.id,
-        provider: PaymentProvider.MPESA,
-        status: PaymentModelStatus.PENDING,
-        amount: amount,
-        phoneNumber: normalizedPhone,
-        providerRequestId: checkoutRequestId
-      }
+    await prisma.payment.update({
+      where: { id: pendingPayment.id },
+      data: { providerRequestId: checkoutRequestId }
     });
 
     res.json({ message: customerMessage, checkoutRequestId });
@@ -151,6 +297,13 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
 
     const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = callbackData;
 
+    // Pending payments briefly have a null providerRequestId while the STK push is in
+    // flight; never let a callback without an ID match (or crash) the lookup.
+    if (!CheckoutRequestID || typeof CheckoutRequestID !== 'string') {
+      res.status(400).json({ error: 'Invalid callback data' });
+      return;
+    }
+
     const payment = await prisma.payment.findUnique({
       where: { providerRequestId: CheckoutRequestID }
     });
@@ -167,23 +320,34 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    if (ResultCode === 0) {
+    // Strict check: Number(null) === 0, so never coerce a missing ResultCode into success.
+    const isSuccess = ResultCode === 0 || ResultCode === '0';
+
+    if (isSuccess) {
       // Success
       const meta = CallbackMetadata?.Item || [];
       const receipt = meta.find((m: any) => m.Name === 'MpesaReceiptNumber')?.Value;
       const amountPaid = meta.find((m: any) => m.Name === 'Amount')?.Value;
 
-      await prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { id: payment.id },
+      const outcome = await prisma.$transaction(async (tx) => {
+        // Claim the payment: only one concurrent delivery of this callback can move it
+        // out of PENDING. Duplicates fall through without touching order or stock.
+        const claimed = await tx.payment.updateMany({
+          where: { id: payment.id, status: PaymentModelStatus.PENDING },
           data: {
             status: PaymentModelStatus.PAID,
             providerTransactionId: receipt,
             receipt: receipt,
+            failureReason: null,
             metadata: callbackData
           }
         });
+        if (claimed.count === 0) {
+          return { kind: 'DUPLICATE' as const };
+        }
 
+        // Conditional update is the race guard against the expiry job: whichever
+        // transaction commits first wins; the other sees count === 0.
         const updateResult = await tx.order.updateMany({
           where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
           data: {
@@ -197,7 +361,7 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
             where: { id: payment.orderId },
             include: { items: true }
           });
-          
+
           if (order) {
             for (const item of order.items) {
               if (item.variantId) {
@@ -211,41 +375,49 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
               }
             }
           }
+          return { kind: 'APPLIED' as const };
         }
-      });
-    } else {
-      // Failed or cancelled
-      await prisma.$transaction(async (tx) => {
+
+        // Money was collected but the order is no longer awaiting payment. Keep the
+        // payment PAID (it really was paid) and flag it for an admin, but DO NOT touch
+        // stock: a cancelled order's reservation was already released by the expiry job.
+        const order = await tx.order.findUnique({
+          where: { id: payment.orderId },
+          select: { orderNumber: true, status: true }
+        });
+        const orderStatus = order?.status ?? 'MISSING';
+        const failureReason = orderStatus === 'CANCELLED'
+          ? 'M-Pesa payment succeeded after order was cancelled/expired. Requires manual review.'
+          : `M-Pesa payment succeeded but order was already ${orderStatus} (possible duplicate payment). Requires manual review.`;
+
         await tx.payment.update({
           where: { id: payment.id },
           data: {
-            status: PaymentModelStatus.FAILED,
-            failureReason: ResultDesc,
-            metadata: callbackData
+            failureReason,
+            metadata: { ...callbackData, orderStatusAtCallback: orderStatus, orderWasCancelled: orderStatus === 'CANCELLED' }
           }
         });
 
-        const updateResult = await tx.order.updateMany({
-          where: { id: payment.orderId, status: 'PENDING_PAYMENT' },
-          data: { status: 'CANCELLED' }
-        });
+        return { kind: 'NEEDS_REVIEW' as const, orderNumber: order?.orderNumber, orderStatus };
+      });
 
-        if (updateResult.count === 1) {
-          const order = await tx.order.findUnique({
-            where: { id: payment.orderId },
-            include: { items: true }
-          });
-          
-          if (order) {
-            for (const item of order.items) {
-              if (item.variantId) {
-                await tx.productVariant.update({
-                  where: { id: item.variantId },
-                  data: { reservedStock: { decrement: item.quantity } }
-                });
-              }
-            }
-          }
+      if (outcome.kind === 'NEEDS_REVIEW') {
+        console.warn(
+          `M-Pesa payment ${payment.id} (receipt ${receipt ?? 'n/a'}) succeeded for order ` +
+          `${outcome.orderNumber ?? payment.orderId} in status ${outcome.orderStatus}. Stock preserved; flagged for manual review.`
+        );
+      }
+    } else {
+      // Failed or cancelled by the customer (e.g. 1032 cancelled, 1037 timeout, 2001 wrong PIN).
+      // Only the payment attempt fails: the order stays PENDING_PAYMENT with its stock
+      // reservation intact so the customer can retry until expiresAt. Releasing the
+      // reservation is the expiry job's responsibility.
+      await prisma.payment.updateMany({
+        where: { id: payment.id, status: PaymentModelStatus.PENDING },
+        data: {
+          status: PaymentModelStatus.FAILED,
+          failureReason: ResultDesc,
+          metadata: callbackData
         }
       });
     }

@@ -43,14 +43,14 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 
-import { startOrderExpiryJob } from './jobs/expireOrders';
+import { startReleaseExpiredOrdersJob } from './jobs/releaseExpiredOrders';
 
 // Error Handling
 app.use(errorHandler);
 
 if (process.env.NODE_ENV !== 'test') {
-  // Start order expiry job
-  startOrderExpiryJob();
+  // Cancel expired PENDING_PAYMENT orders and release reserved stock (every minute)
+  startReleaseExpiredOrdersJob();
 
   // Start server
   app.listen(PORT, () => {

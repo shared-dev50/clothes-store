@@ -3,6 +3,7 @@ import app from '../src/index';
 import prisma from '../src/config/db';
 import Stripe from 'stripe';
 import { PaymentModelStatus, PaymentProvider } from '@prisma/client';
+import { releaseExpiredOrders } from '../src/jobs/releaseExpiredOrders';
 
 jest.mock('stripe', () => {
   const RealStripe = jest.requireActual('stripe');
@@ -343,24 +344,12 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
     expect(mpesaPayRes.status).toBe(400);
     expect(mpesaPayRes.body.error).toMatch(/reservation has expired/i);
 
-    // 3. Run transactional expiry routine (mirroring startOrderExpiryJob)
-    await prisma.$transaction(async (tx) => {
-      const updateResult = await tx.order.updateMany({
-        where: {
-          id: order.id,
-          status: 'PENDING_PAYMENT',
-          expiresAt: { lt: new Date() }
-        },
-        data: { status: 'CANCELLED' }
-      });
+    // 3. Run the real expiry sweep used by the cron job
+    const cancelledCount = await releaseExpiredOrders();
+    expect(cancelledCount).toBeGreaterThanOrEqual(1);
 
-      if (updateResult.count === 1) {
-        await tx.productVariant.update({
-          where: { id: variantA.id },
-          data: { reservedStock: { decrement: 2 } }
-        });
-      }
-    });
+    // Re-running the sweep must not release the same reservation twice
+    await releaseExpiredOrders();
 
     const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
     expect(updatedOrder?.status).toBe('CANCELLED');
@@ -796,12 +785,155 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
 
     await request(app).post('/api/payments/mpesa/callback').send(failureCallback);
 
-    const cancelledOrder = await prisma.order.findUnique({ where: { id: failOrder.id } });
-    expect(cancelledOrder?.status).toBe('CANCELLED');
+    // Failed attempt is recorded on the payment only
+    const failedPayment = await prisma.payment.findUnique({ where: { id: failPayment!.id } });
+    expect(failedPayment?.status).toBe(PaymentModelStatus.FAILED);
+    expect(failedPayment?.failureReason).toBe('Request cancelled by user');
 
-    // Reserved stock released back to 0, physical stock unchanged at 8
+    // Order stays payable so the customer can retry before expiresAt
+    const stillPendingOrder = await prisma.order.findUnique({ where: { id: failOrder.id } });
+    expect(stillPendingOrder?.status).toBe('PENDING_PAYMENT');
+    expect(stillPendingOrder?.paymentStatus).toBe('UNPAID');
+
+    // Reservation is kept (released only by the expiry job), physical stock unchanged at 8
     dbVariant = await prisma.productVariant.findUnique({ where: { id: variantA.id } });
     expect(dbVariant?.stock).toBe(8);
+    expect(dbVariant?.reservedStock).toBe(2);
+
+    // A failed attempt must not trigger the STK cooldown: retry is allowed immediately
+    const retryRes = await request(app).post('/api/payments/mpesa/stk-push').send({
+      orderNumber: failOrder.orderNumber,
+      phoneNumber: '0712345678'
+    });
+    expect(retryRes.status).toBe(200);
+  });
+
+  // =========================================================================
+  // 10. M-Pesa STK push cooldown (spam / race protection)
+  // =========================================================================
+  it('10. should return 429 for repeat STK pushes while a prompt is pending, including concurrent requests', async () => {
+    const { product, variantA } = await createTestCategoryAndProduct(10, 500);
+
+    const createOrder = async (email: string) => {
+      const res = await request(app).post('/api/orders').send({
+        customerName: 'Spam Tester', customerEmail: email, customerPhone: '254712345678',
+        deliveryAddress: 'Spam Way', county: 'Nairobi',
+        items: [{ productId: product.id, variantId: variantA.id, quantity: 1 }]
+      });
+      expect(res.status).toBe(201);
+      return res.body;
+    };
+
+    // Sequential: second push within 2 minutes is rejected
+    const order = await createOrder(`spam_seq_${Date.now()}@example.com`);
+    const first = await request(app).post('/api/payments/mpesa/stk-push')
+      .send({ orderNumber: order.orderNumber, phoneNumber: '0712345678' });
+    expect(first.status).toBe(200);
+
+    const second = await request(app).post('/api/payments/mpesa/stk-push')
+      .send({ orderNumber: order.orderNumber, phoneNumber: '0712345678' });
+    expect(second.status).toBe(429);
+    expect(second.body.error).toMatch(/check your phone/i);
+    expect(Number(second.headers['retry-after'])).toBeGreaterThan(0);
+    expect(Number(second.headers['retry-after'])).toBeLessThanOrEqual(120);
+
+    const seqPayments = await prisma.payment.count({
+      where: { orderId: order.id, provider: PaymentProvider.MPESA }
+    });
+    expect(seqPayments).toBe(1);
+
+    // Concurrent: exactly one of several simultaneous pushes may reach Safaricom
+    const raceOrder = await createOrder(`spam_race_${Date.now()}@example.com`);
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        request(app).post('/api/payments/mpesa/stk-push')
+          .send({ orderNumber: raceOrder.orderNumber, phoneNumber: '0712345678' })
+      )
+    );
+    const statuses = results.map(r => r.status).sort();
+    expect(statuses).toEqual([200, 429, 429, 429]);
+
+    const racePayments = await prisma.payment.count({
+      where: { orderId: raceOrder.id, provider: PaymentProvider.MPESA }
+    });
+    expect(racePayments).toBe(1);
+  });
+
+  // =========================================================================
+  // 11. M-Pesa late payment on an expired/cancelled order
+  // =========================================================================
+  it('11. should record a late M-Pesa payment for manual review without touching stock', async () => {
+    const { product, variantA } = await createTestCategoryAndProduct(10, 500);
+
+    const orderRes = await request(app).post('/api/orders').send({
+      customerName: 'Late Payer', customerEmail: `late_${Date.now()}@example.com`, customerPhone: '254712345678',
+      deliveryAddress: 'Late Lane', county: 'Nairobi',
+      items: [{ productId: product.id, variantId: variantA.id, quantity: 2 }]
+    });
+    const order = orderRes.body;
+
+    const stkRes = await request(app).post('/api/payments/mpesa/stk-push')
+      .send({ orderNumber: order.orderNumber, phoneNumber: '0712345678' });
+    expect(stkRes.status).toBe(200);
+
+    const pendingPayment = await prisma.payment.findFirst({
+      where: { orderId: order.id, provider: PaymentProvider.MPESA }
+    });
+
+    // Reservation window lapses while the customer is still on the STK prompt
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { expiresAt: new Date(Date.now() - 60 * 1000) }
+    });
+    await releaseExpiredOrders();
+
+    let dbVariant = await prisma.productVariant.findUnique({ where: { id: variantA.id } });
+    expect(dbVariant?.stock).toBe(10);
+    expect(dbVariant?.reservedStock).toBe(0);
+
+    // Customer then completes payment on their phone
+    const receipt = `LATE${Date.now()}`;
+    const lateCallback = {
+      Body: {
+        stkCallback: {
+          MerchantRequestID: 'mock_merchant_late',
+          CheckoutRequestID: pendingPayment?.providerRequestId,
+          ResultCode: 0,
+          ResultDesc: 'The service request is processed successfully.',
+          CallbackMetadata: {
+            Item: [
+              { Name: 'Amount', Value: 1000 },
+              { Name: 'MpesaReceiptNumber', Value: receipt },
+              { Name: 'PhoneNumber', Value: 254712345678 }
+            ]
+          }
+        }
+      }
+    };
+
+    const cbRes = await request(app).post('/api/payments/mpesa/callback').send(lateCallback);
+    expect(cbRes.status).toBe(200);
+
+    // Payment is PAID (money was collected) and flagged for review
+    const latePayment = await prisma.payment.findUnique({ where: { id: pendingPayment!.id } });
+    expect(latePayment?.status).toBe(PaymentModelStatus.PAID);
+    expect(latePayment?.receipt).toBe(receipt);
+    expect(latePayment?.failureReason).toMatch(/cancelled\/expired.*manual review/i);
+
+    // Order stays cancelled; stock and reservations are untouched
+    const cancelledOrder = await prisma.order.findUnique({ where: { id: order.id } });
+    expect(cancelledOrder?.status).toBe('CANCELLED');
+    expect(cancelledOrder?.paymentStatus).toBe('UNPAID');
+
+    dbVariant = await prisma.productVariant.findUnique({ where: { id: variantA.id } });
+    expect(dbVariant?.stock).toBe(10);
+    expect(dbVariant?.reservedStock).toBe(0);
+
+    // Duplicate delivery of the same callback is a no-op
+    const dupRes = await request(app).post('/api/payments/mpesa/callback').send(lateCallback);
+    expect(dupRes.status).toBe(200);
+    dbVariant = await prisma.productVariant.findUnique({ where: { id: variantA.id } });
+    expect(dbVariant?.stock).toBe(10);
     expect(dbVariant?.reservedStock).toBe(0);
   });
 });
