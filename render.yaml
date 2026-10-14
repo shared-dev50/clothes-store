@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: hbs-wear-api
+    name: hbs-wear-api-254
     runtime: node
     plan: starter
     rootDir: server
