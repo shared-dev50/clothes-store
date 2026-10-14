@@ -101,7 +101,7 @@ describe('Daraja helpers', () => {
 
     it('never calls Safaricom when credentials are placeholders', async () => {
       delete process.env.DARAJA_CONSUMER_KEY;
-      const { getDarajaToken } = loadController();
+      const { getDarajaToken } = loadController({ DARAJA_CONSUMER_KEY: 'placeholder_consumer_key' });
       const fetchSpy = jest.spyOn(global, 'fetch');
 
       expect(await getDarajaToken()).toBe('mock_daraja_token');

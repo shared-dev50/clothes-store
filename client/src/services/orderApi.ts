@@ -1,4 +1,7 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { useAuthStore } from '../store/authStore';
+
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = rawApiUrl.replace(/\/+$/, '');
 
 export interface OrderItemPayload {
   productId: string;
@@ -18,7 +21,7 @@ export interface CreateOrderPayload {
 }
 
 const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('token');
+  const token = useAuthStore.getState().token || localStorage.getItem('token');
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
