@@ -23,7 +23,22 @@ if (missingCloudinaryEnv.length > 0) {
 }
 
 // Middleware
-app.use(cors({ origin: CLIENT_URL }));
+const allowedOrigins = [
+  CLIENT_URL,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+].filter(Boolean) as string[];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
+  credentials: true,
+}));
 // Mount stripe webhook BEFORE express.json() so it receives the unparsed raw buffer
 import paymentRoutes from './routes/paymentRoutes';
 app.use('/api/payments/stripe/webhook', express.raw({ type: '*/*' }));
@@ -33,6 +48,7 @@ app.use(express.json());
 import authRoutes from './routes/authRoutes';
 import adminRoutes from './routes/adminRoutes';
 import orderRoutes from './routes/orderRoutes';
+import homepageRoutes from './routes/homepageRoutes';
 
 // Routes
 app.use('/api/health', healthRoutes);
@@ -42,6 +58,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/homepage-settings', homepageRoutes);
 
 import { startReleaseExpiredOrdersJob } from './jobs/releaseExpiredOrders';
 

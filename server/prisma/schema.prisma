@@ -191,3 +191,24 @@ model Payment {
 
   @@map("payments")
 }
+
+model HomepageSettings {
+  id                          String   @id @default("default")
+  heroHeading                 String   @default("Modern\nHeritage.")
+  heroCaption                 String   @default("Introducing Collection 01. Minimalist contemporary silhouettes crafted with a Kenyan soul.")
+  heroCtaLabel                String   @default("Shop Collection")
+  heroCtaLink                 String   @default("/shop")
+  heroCtaSecondaryLabel       String?  @default("New Arrivals")
+  heroCtaSecondaryLink        String?  @default("/shop?category=new")
+  heroImageUrl                String?
+  heroMobileImageUrl          String?
+  navbarTransparentForeground String   @default("#FAFAFA")
+  navbarScrolledBackground    String   @default("#FAFAFA")
+  navbarScrolledForeground    String   @default("#121212")
+  lifestyleCards              Json?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@map("homepage_settings")
+}
+

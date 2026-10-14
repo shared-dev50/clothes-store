@@ -82,12 +82,41 @@ export const getProducts = async (filters: ProductQueryFilters): Promise<Product
   const where: Prisma.ProductWhereInput = {};
 
   if (filters.category && filters.category !== 'All') {
-    where.category = {
-      OR: [
-        { name: filters.category },
-        { parent: { name: filters.category } },
-      ],
-    };
+    const cat = filters.category.trim();
+    const catLower = cat.toLowerCase();
+
+    if (catLower === 'men') {
+      where.category = {
+        AND: [
+          { name: { contains: "Men's", mode: 'insensitive' } },
+          { NOT: { name: { contains: "Women's", mode: 'insensitive' } } },
+        ],
+      };
+    } else if (catLower === 'women') {
+      where.category = {
+        OR: [
+          { name: { contains: "Women's", mode: 'insensitive' } },
+          { name: { equals: 'Handbags', mode: 'insensitive' } },
+          { name: { equals: 'Wigs & Hair', mode: 'insensitive' } },
+        ],
+      };
+    } else if (catLower === 'kids') {
+      where.category = {
+        OR: [
+          { name: { contains: "Girls'", mode: 'insensitive' } },
+          { name: { contains: "Boys'", mode: 'insensitive' } },
+        ],
+      };
+    } else {
+      where.category = {
+        OR: [
+          { name: { equals: cat, mode: 'insensitive' } },
+          { slug: { equals: cat, mode: 'insensitive' } },
+          { parent: { name: { equals: cat, mode: 'insensitive' } } },
+          { parent: { slug: { equals: cat, mode: 'insensitive' } } },
+        ],
+      };
+    }
   }
 
   if (filters.featured === 'true') {

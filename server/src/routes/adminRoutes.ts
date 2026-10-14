@@ -24,4 +24,8 @@ router.put('/orders/:id/status', updateOrderStatus);
 
 router.post('/uploads/cloudinary/signature', getCloudinarySignature);
 
+import { getHomepageSettings, updateHomepageSettings } from '../controllers/homepageController';
+router.get('/homepage-settings', getHomepageSettings);
+router.put('/homepage-settings', updateHomepageSettings);
+
 export default router;

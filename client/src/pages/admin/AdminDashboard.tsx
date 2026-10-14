@@ -7,7 +7,7 @@ import { Plus, Edit2, Trash2 } from 'lucide-react';
 export const AdminDashboard: React.FC = () => {
   const queryClient = useQueryClient();
 
-  const { data: products, isLoading } = useQuery({
+  const { data: products, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['adminProducts'],
     queryFn: fetchAdminProducts,
   });
@@ -27,6 +27,25 @@ export const AdminDashboard: React.FC = () => {
 
   if (isLoading) {
     return <div className="p-8 text-center uppercase tracking-widest text-brand-taupe">Loading Products...</div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="p-8 text-center bg-brand-white border border-red-200 shadow-sm">
+        <p className="text-red-600 font-medium uppercase tracking-wide mb-2">
+          Failed to load products
+        </p>
+        <p className="text-xs text-brand-taupe mb-4">
+          {(error as Error)?.message || 'An error occurred while fetching products.'}
+        </p>
+        <button
+          onClick={() => refetch()}
+          className="bg-brand-black text-brand-white px-4 py-2 uppercase tracking-wide text-xs hover:bg-brand-taupe transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -56,8 +75,8 @@ export const AdminDashboard: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-brand-stone/50">
             {products?.map((product: any) => {
-              const totalStock = product.variants.reduce((sum: number, v: any) => sum + v.stock, 0);
-              const mainImage = product.images.find((img: any) => img.displayOrder === 0) || product.images[0];
+              const totalStock = product.variants?.reduce((sum: number, v: any) => sum + v.stock, 0) ?? 0;
+              const mainImage = product.images?.find((img: any) => img.displayOrder === 0) || product.images?.[0];
               
               return (
                 <tr key={product.id} className="hover:bg-brand-stone/10 transition-colors">
@@ -69,7 +88,7 @@ export const AdminDashboard: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 font-medium">{product.name}</td>
-                  <td className="px-6 py-4">{product.category.name}</td>
+                  <td className="px-6 py-4">{product.category?.name || 'Uncategorized'}</td>
                   <td className="px-6 py-4">KES {Number(product.price).toLocaleString()}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 text-xs font-bold ${totalStock > 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
@@ -103,7 +122,7 @@ export const AdminDashboard: React.FC = () => {
                 </tr>
               );
             })}
-            {(!products || products.length === 0) && (
+            {Array.isArray(products) && products.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-6 py-12 text-center text-brand-taupe">
                   No products found. Add your first product!

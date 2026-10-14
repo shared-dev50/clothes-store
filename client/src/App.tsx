@@ -14,6 +14,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminProductForm } from './pages/admin/AdminProductForm';
 import { OrderConfirmation } from './pages/OrderConfirmation';
 import { AdminOrders } from './pages/admin/AdminOrders';
+import { AdminHomepageSettings } from './pages/admin/AdminHomepageSettings';
 import { Toaster } from 'react-hot-toast';
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ function App() {
             <Route path="products/new" element={<AdminProductForm />} />
             <Route path="products/:id/edit" element={<AdminProductForm />} />
             <Route path="orders" element={<AdminOrders />} />
+            <Route path="homepage" element={<AdminHomepageSettings />} />
           </Route>
         </Routes>
       </BrowserRouter>

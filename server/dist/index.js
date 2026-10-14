@@ -10,7 +10,9 @@ const categoryRoutes_1 = __importDefault(require("./routes/categoryRoutes"));
 const productRoutes_1 = __importDefault(require("./routes/productRoutes"));
 const healthRoutes_1 = __importDefault(require("./routes/healthRoutes"));
 const errorHandler_1 = require("./middleware/errorHandler");
-dotenv_1.default.config();
+if (process.env.NODE_ENV !== 'test') {
+    dotenv_1.default.config();
+}
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -22,7 +24,22 @@ if (missingCloudinaryEnv.length > 0) {
     console.warn(`Product image uploads will fail until these are added to the server/.env file.\n`);
 }
 // Middleware
-app.use((0, cors_1.default)({ origin: CLIENT_URL }));
+const allowedOrigins = [
+    CLIENT_URL,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+].filter(Boolean);
+app.use((0, cors_1.default)({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(null, true);
+        }
+    },
+    credentials: true,
+}));
 // Mount stripe webhook BEFORE express.json() so it receives the unparsed raw buffer
 const paymentRoutes_1 = __importDefault(require("./routes/paymentRoutes"));
 app.use('/api/payments/stripe/webhook', express_1.default.raw({ type: '*/*' }));
@@ -30,6 +47,7 @@ app.use(express_1.default.json());
 const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const adminRoutes_1 = __importDefault(require("./routes/adminRoutes"));
 const orderRoutes_1 = __importDefault(require("./routes/orderRoutes"));
+const homepageRoutes_1 = __importDefault(require("./routes/homepageRoutes"));
 // Routes
 app.use('/api/health', healthRoutes_1.default);
 app.use('/api/auth', authRoutes_1.default);
@@ -38,12 +56,13 @@ app.use('/api/categories', categoryRoutes_1.default);
 app.use('/api/products', productRoutes_1.default);
 app.use('/api/orders', orderRoutes_1.default);
 app.use('/api/payments', paymentRoutes_1.default);
-const expireOrders_1 = require("./jobs/expireOrders");
+app.use('/api/homepage-settings', homepageRoutes_1.default);
+const releaseExpiredOrders_1 = require("./jobs/releaseExpiredOrders");
 // Error Handling
 app.use(errorHandler_1.errorHandler);
 if (process.env.NODE_ENV !== 'test') {
-    // Start order expiry job
-    (0, expireOrders_1.startOrderExpiryJob)();
+    // Cancel expired PENDING_PAYMENT orders and release reserved stock (every minute)
+    (0, releaseExpiredOrders_1.startReleaseExpiredOrdersJob)();
     // Start server
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);

@@ -17,8 +17,14 @@ export const AdminLayout: React.FC = () => {
           HBS Admin
         </Link>
         <div className="flex gap-4 items-center">
+          <Link to="/admin/products" className="text-sm uppercase tracking-wide hover:text-brand-taupe">
+            Products
+          </Link>
           <Link to="/admin/orders" className="text-sm uppercase tracking-wide hover:text-brand-taupe">
             Orders
+          </Link>
+          <Link to="/admin/homepage" className="text-sm uppercase tracking-wide hover:text-brand-taupe">
+            Homepage
           </Link>
           <Link to="/" className="text-sm uppercase tracking-wide hover:text-brand-taupe">
             Storefront

@@ -6,6 +6,25 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HBS WEAR</title>
+  <script>
+    (function () {
+      try {
+        var raw = localStorage.getItem('hbs_homepage_settings');
+        if (!raw) return;
+        var data = JSON.parse(raw);
+        var isMobile = window.innerWidth <= 768;
+        var img = (isMobile && data.heroMobileImageUrl) ? data.heroMobileImageUrl : (data.heroImageUrl || '');
+        if (img && (img.indexOf('http://') === 0 || img.indexOf('https://') === 0)) {
+          var link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'image';
+          link.href = img;
+          link.setAttribute('fetchpriority', 'high');
+          document.head.appendChild(link);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
 </head>
 

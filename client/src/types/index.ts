@@ -40,3 +40,31 @@ export interface CartItem {
   quantity: number;
   image: string;
 }
+
+export interface LifestyleCardItem {
+  id: string;
+  title: string;
+  caption: string;
+  imageUrl: string;
+  destination: string;
+  isVisible: boolean;
+  order: number;
+}
+
+export interface HomepageSettings {
+  id: string;
+  heroHeading: string;
+  heroCaption: string;
+  heroCtaLabel: string;
+  heroCtaLink: string;
+  heroCtaSecondaryLabel?: string | null;
+  heroCtaSecondaryLink?: string | null;
+  heroImageUrl?: string | null;
+  heroMobileImageUrl?: string | null;
+  navbarTransparentForeground: string;
+  navbarScrolledBackground: string;
+  navbarScrolledForeground: string;
+  lifestyleCards: LifestyleCardItem[];
+  updatedAt?: string;
+}
+

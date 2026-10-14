@@ -3,144 +3,257 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
-import { getFeaturedProducts } from '../services/productApi';
+import { getFeaturedProducts, getNewArrivals, getHomepageSettings, getCachedHomepageSettings } from '../services/productApi';
 import { ProductCard } from '../components/product/ProductCard';
 
-// generated assets
-import heroImage from '../assets/images/hero.png';
-import lookbookImage from '../assets/images/lookbook.png';
-import accessoriesImage from '../assets/images/accessories.png';
+// bundled fallback assets
+import heroFallbackImage from '../assets/images/hero.png';
 
 export const Home: React.FC = () => {
-  const { data: products = [], isLoading: loading } = useQuery({
+  // 1. Homepage Settings Query (synchronously initialized from cache to prevent hero flash)
+  const { data: settings } = useQuery({
+    queryKey: ['homepageSettings'],
+    queryFn: getHomepageSettings,
+    initialData: getCachedHomepageSettings,
+    initialDataUpdatedAt: 0,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // 2. Featured Products Query
+  const { data: featuredData = [], isLoading: loadingFeatured } = useQuery({
     queryKey: ['featuredProducts'],
     queryFn: getFeaturedProducts,
   });
 
-  const featuredProducts = products.slice(0, 4);
+  // 3. New Arrivals Query
+  const { data: newArrivalsData = [], isLoading: loadingNewArrivals } = useQuery({
+    queryKey: ['newArrivals'],
+    queryFn: getNewArrivals,
+  });
+
+  const featuredProducts = featuredData.slice(0, 4);
+  const featuredIds = new Set(featuredProducts.map((p) => p.id));
+
+  // Avoid unnecessary duplicates with featured products where practical
+  const distinctNewArrivals = newArrivalsData.filter((p) => !featuredIds.has(p.id));
+  const newArrivalProducts = (
+    distinctNewArrivals.length > 0 ? distinctNewArrivals : newArrivalsData
+  ).slice(0, 4);
+
+  // Fallback defaults for content
+  const heroHeading = settings?.heroHeading || 'Modern\nHeritage.';
+  const heroCaption =
+    settings?.heroCaption ||
+    'Introducing Collection 01. Minimalist contemporary silhouettes crafted with a Kenyan soul.';
+  const heroCtaLabel = settings?.heroCtaLabel || 'Shop Collection';
+  const heroCtaLink = settings?.heroCtaLink || '/shop';
+  const heroCtaSecondaryLabel = settings?.heroCtaSecondaryLabel || 'New Arrivals';
+  const heroCtaSecondaryLink = settings?.heroCtaSecondaryLink || '/shop?category=new';
+
+  const heroDesktopImage = settings?.heroImageUrl || heroFallbackImage;
+  const heroMobileImage = settings?.heroMobileImageUrl || heroDesktopImage;
+
+  // Filter and sort visible lifestyle cards
+  const visibleCards = (settings?.lifestyleCards || [])
+    .filter((card) => card.isVisible !== false)
+    .sort((a, b) => a.order - b.order);
 
   return (
-    <div className="w-full">
-      {/* Hero Section */}
-      <section className="relative h-[85vh] w-full overflow-hidden">
-        <img
-          src={heroImage}
-          alt="Studio Nairobi Collection"
-          className="absolute inset-0 w-full h-full object-cover object-center md:object-[center_15%]"
-        />
-        <div className="absolute inset-0 bg-brand-black/20" />
+    <div className="w-full overflow-x-hidden">
+      {/* 1. Full-Viewport Hero Section */}
+      <section className="relative w-full h-[100svh] min-h-[600px] overflow-hidden flex flex-col justify-end">
+        {/* Hero Background Image with responsive cropping and composition */}
+        <picture className="absolute inset-0 w-full h-full">
+          {heroMobileImage && heroMobileImage !== heroDesktopImage && (
+            <source media="(max-width: 768px)" srcSet={heroMobileImage} />
+          )}
+          <img
+            src={heroDesktopImage}
+            alt="HBS Wear Signature Collection"
+            className="w-full h-full object-cover object-center md:object-[center_15%]"
+            loading="eager"
+            fetchPriority="high"
+          />
+        </picture>
 
-        <div className="absolute inset-0 flex flex-col justify-end pb-24 md:pb-32 px-6 md:px-12 max-w-7xl mx-auto">
+        {/* Cinematic Gradient Overlays for optimal contrast on both top navbar and bottom text */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/45 pointer-events-none" />
+
+        {/* Hero Content Container */}
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 pb-16 sm:pb-20 md:pb-24">
           <div className="max-w-2xl text-brand-white">
-            <h1 className="text-5xl md:text-7xl font-display font-medium tracking-tighter uppercase mb-4 leading-none">
-              Modern <br /> Heritage.
+            <h1 className="text-4xl sm:text-6xl md:text-7xl font-display font-medium tracking-tighter uppercase mb-4 leading-[0.95] whitespace-pre-line">
+              {heroHeading}
             </h1>
-            <p className="text-base md:text-lg mb-8 max-w-md text-brand-white/90">
-              Introducing Collection 01. Minimalist contemporary silhouettes crafted with a Kenyan soul.
+            <p className="text-sm sm:text-base md:text-lg mb-8 max-w-lg text-brand-white/90 leading-relaxed font-normal">
+              {heroCaption}
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                to="/shop"
-                className="inline-flex justify-center items-center px-8 py-4 bg-brand-white text-brand-black text-sm font-semibold tracking-widest uppercase hover:bg-brand-stone transition-colors"
+                to={heroCtaLink}
+                className="inline-flex justify-center items-center px-8 py-4 bg-brand-white text-brand-black text-xs sm:text-sm font-semibold tracking-widest uppercase hover:bg-brand-stone transition-colors shadow-lg active:scale-95"
               >
-                Shop Collection
+                {heroCtaLabel}
               </Link>
-              <Link
-                to="/shop?category=new"
-                className="inline-flex justify-center items-center px-8 py-4 bg-transparent border border-brand-white text-brand-white text-sm font-semibold tracking-widest uppercase hover:bg-brand-white/10 transition-colors"
-              >
-                New Arrivals
-              </Link>
+              {heroCtaSecondaryLabel && heroCtaSecondaryLink && (
+                <Link
+                  to={heroCtaSecondaryLink}
+                  className="inline-flex justify-center items-center px-8 py-4 bg-transparent border border-brand-white text-brand-white text-xs sm:text-sm font-semibold tracking-widest uppercase hover:bg-brand-white/15 transition-colors active:scale-95"
+                >
+                  {heroCtaSecondaryLabel}
+                </Link>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Featured Collection Grid */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="flex justify-between items-end mb-12">
+      {/* 2. Featured Collection Grid */}
+      <section className="py-20 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="flex justify-between items-end mb-10 md:mb-12">
           <div>
-            <h2 className="text-3xl font-display font-medium tracking-tighter uppercase mb-2">Featured</h2>
-            <p className="text-brand-taupe text-sm">Curated selection of our signature pieces.</p>
+            <h2 className="text-2xl sm:text-3xl font-display font-medium tracking-tight uppercase mb-1.5">
+              Featured
+            </h2>
+            <p className="text-brand-taupe text-xs sm:text-sm">Curated selection of our signature pieces.</p>
           </div>
-          <Link to="/shop" className="group flex items-center text-sm font-semibold uppercase tracking-wider hover:text-brand-taupe transition-colors">
-            View All <ArrowRight size={16} className="ml-2 transform group-hover:translate-x-1 transition-transform" />
+          <Link
+            to="/shop"
+            className="group inline-flex items-center text-xs sm:text-sm font-semibold uppercase tracking-wider text-brand-black hover:text-brand-taupe transition-colors"
+          >
+            View All{' '}
+            <ArrowRight size={16} className="ml-1.5 transform group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
 
-        {loading ? (
+        {loadingFeatured ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10 sm:gap-x-6 lg:gap-x-8">
-            {[1, 2, 3, 4].map(i => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="animate-pulse flex flex-col">
-                <div className="bg-brand-stone/30 aspect-[4/5] mb-4 w-full"></div>
-                <div className="h-4 bg-brand-stone/40 w-3/4 mb-2"></div>
-                <div className="h-4 bg-brand-stone/40 w-1/4"></div>
+                <div className="bg-brand-stone/30 aspect-[4/5] mb-4 w-full rounded-sm" />
+                <div className="h-4 bg-brand-stone/40 w-3/4 mb-2 rounded-sm" />
+                <div className="h-4 bg-brand-stone/40 w-1/4 rounded-sm" />
               </div>
             ))}
           </div>
-        ) : (
+        ) : featuredProducts.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10 sm:gap-x-6 lg:gap-x-8">
-            {featuredProducts.map(product => (
+            {featuredProducts.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </div>
+        ) : (
+          <div className="py-12 text-center text-sm text-brand-taupe">No featured products available.</div>
         )}
       </section>
 
-      {/* Editorial / Lookbook Section */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row gap-8 lg:gap-16 items-center">
-          <div className="w-full md:w-1/2 aspect-[3/4] relative overflow-hidden">
-            <img
-              src={lookbookImage}
-              alt="Editorial Lookbook"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          </div>
-          <div className="w-full md:w-1/2 flex flex-col justify-center">
-            <h2 className="text-4xl md:text-5xl font-display font-medium tracking-tighter uppercase mb-6">
-              The Canvas <br /> Collection
-            </h2>
-            <p className="text-brand-taupe text-base md:text-lg mb-8 max-w-md leading-relaxed">
-              Designed in Nairobi, constructed for the world. We focus on heavy, durable fabrics paired with relaxed, boxy cuts to create pieces that live alongside you.
-            </p>
+      {/* 3. New Arrivals Section (Directly below Featured, hides if empty) */}
+      {(!loadingNewArrivals && newArrivalProducts.length > 0) || loadingNewArrivals ? (
+        <section className="py-12 md:py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-brand-stone/50">
+          <div className="flex justify-between items-end mb-10 md:mb-12">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-display font-medium tracking-tight uppercase mb-1.5">
+                New Arrivals
+              </h2>
+              <p className="text-brand-taupe text-xs sm:text-sm">The latest additions to our wardrobe.</p>
+            </div>
             <Link
-              to="/shop?category=Clothing"
-              className="inline-flex justify-center items-center px-8 py-4 bg-brand-black text-brand-white text-sm font-semibold tracking-widest uppercase hover:bg-brand-black/80 transition-colors self-start"
+              to="/shop?category=new"
+              className="group inline-flex items-center text-xs sm:text-sm font-semibold uppercase tracking-wider text-brand-black hover:text-brand-taupe transition-colors"
             >
-              Discover Clothing
+              Browse New{' '}
+              <ArrowRight size={16} className="ml-1.5 transform group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>
-        </div>
-      </section>
 
-      {/* Categories Highlight */}
-      <section className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[600px]">
-          <Link to="/shop?category=Clothing" className="relative group overflow-hidden bg-brand-stone/20">
-            <img
-              src="https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?q=80&w=1200&auto=format&fit=crop"
-              alt="Clothing"
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-black/10 transition-colors group-hover:bg-black/20" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <h3 className="text-3xl font-display font-medium text-brand-white uppercase tracking-widest">Clothing</h3>
+          {loadingNewArrivals ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10 sm:gap-x-6 lg:gap-x-8">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="animate-pulse flex flex-col">
+                  <div className="bg-brand-stone/30 aspect-[4/5] mb-4 w-full rounded-sm" />
+                  <div className="h-4 bg-brand-stone/40 w-3/4 mb-2 rounded-sm" />
+                  <div className="h-4 bg-brand-stone/40 w-1/4 rounded-sm" />
+                </div>
+              ))}
             </div>
-          </Link>
-          <Link to="/shop?category=Handbags" className="relative group overflow-hidden bg-brand-stone/20">
-            <img
-              src={accessoriesImage}
-              alt="Handbags"
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-black/10 transition-colors group-hover:bg-black/20" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <h3 className="text-3xl font-display font-medium text-brand-white uppercase tracking-widest">Handbags</h3>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10 sm:gap-x-6 lg:gap-x-8">
+              {newArrivalProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
             </div>
-          </Link>
-        </div>
-      </section>
+          )}
+        </section>
+      ) : null}
+
+      {/* 4. Three Configurable Lifestyle Editorial Cards */}
+      {visibleCards.length > 0 && (
+        <section className="py-20 md:py-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-brand-stone/50">
+          <div className="mb-10 text-center max-w-xl mx-auto">
+            <span className="text-xs font-bold tracking-widest uppercase text-brand-taupe block mb-2">
+              Curated Living
+            </span>
+            <h2 className="text-3xl md:text-4xl font-display font-medium tracking-tight uppercase">
+              The Lifestyle Edit
+            </h2>
+          </div>
+
+          <div
+            className={`grid gap-6 sm:gap-8 ${
+              visibleCards.length === 1
+                ? 'grid-cols-1 max-w-2xl mx-auto'
+                : visibleCards.length === 2
+                ? 'grid-cols-1 md:grid-cols-2'
+                : 'grid-cols-1 md:grid-cols-3'
+            }`}
+          >
+            {visibleCards.map((card) => {
+              const destination = card.destination || '/shop';
+              return (
+                <Link
+                  key={card.id}
+                  to={destination}
+                  className="group relative flex flex-col overflow-hidden bg-brand-stone/20 h-[480px] sm:h-[520px] md:h-[560px] border border-brand-stone/60 transition-shadow duration-300 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-brand-black"
+                >
+                  {/* Card Background Image */}
+                  {card.imageUrl ? (
+                    <img
+                      src={card.imageUrl}
+                      alt={card.title}
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-brand-stone/40 flex items-center justify-center text-brand-taupe text-sm">
+                      No Image Available
+                    </div>
+                  )}
+
+                  {/* Gradient Dark Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent transition-opacity duration-300 group-hover:from-black/90" />
+
+                  {/* Text Content */}
+                  <div className="relative z-10 mt-auto p-6 sm:p-8 text-brand-white flex flex-col justify-end">
+                    <span className="text-[10px] font-bold tracking-widest uppercase text-brand-white/70 mb-1.5 block">
+                      Category Spotlight
+                    </span>
+                    <h3 className="text-2xl sm:text-3xl font-display font-medium uppercase tracking-tight mb-2">
+                      {card.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-brand-white/85 mb-6 leading-relaxed line-clamp-2">
+                      {card.caption}
+                    </p>
+                    <div className="inline-flex items-center text-xs font-bold uppercase tracking-widest text-brand-white group-hover:underline underline-offset-4">
+                      Explore Collection{' '}
+                      <ArrowRight size={14} className="ml-2 transform group-hover:translate-x-1.5 transition-transform" />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 };
