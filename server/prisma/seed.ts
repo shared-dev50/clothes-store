@@ -1,4 +1,6 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -325,120 +327,134 @@ const productsData = [
 
 async function main() {
   console.log('Starting HBS Wear database seed...');
-  console.log('Clearing existing data deterministically...');
 
-  // 1. SAFELY CLEAR EXISTING DATA
-  // 1. SAFELY CLEAR EXISTING DATA
-  await prisma.$transaction([
-    prisma.productVariant.deleteMany({}),
-    prisma.productImage.deleteMany({}),
-    prisma.product.deleteMany({}),
-    prisma.category.deleteMany({ where: { parentId: { not: null } } }),
-    prisma.category.deleteMany({ where: { parentId: null } }),
-  ]);
-  console.log('Existing data cleared. Seeding real HBS Wear catalogue...');
+  await prisma.$transaction(
+    async (tx) => {
+      console.log('Clearing existing data deterministically...');
 
-  // 2. CREATE CATEGORIES
-  const categoryMap = new Map<string, string>();
+      // 1. SAFELY CLEAR EXISTING DATA
+      await tx.payment.deleteMany({});
+      await tx.orderItem.deleteMany({});
+      await tx.order.deleteMany({});
+      await tx.productVariant.deleteMany({});
+      await tx.productImage.deleteMany({});
+      await tx.product.deleteMany({});
+      await tx.category.deleteMany({ where: { parentId: { not: null } } });
+      await tx.category.deleteMany({ where: { parentId: null } });
 
-  for (const categoryData of categoriesData) {
-    const parent = await prisma.category.create({
-      data: { name: categoryData.name, slug: categoryData.slug },
-    });
-    categoryMap.set(categoryData.name, parent.id);
+      console.log('Existing data cleared. Seeding real HBS Wear catalogue...');
 
-    for (const childData of categoryData.children) {
-      const child = await prisma.category.create({
-        data: { name: childData.name, slug: childData.slug, parentId: parent.id },
-      });
-      categoryMap.set(childData.name, child.id);
-    }
-  }
+      // 2. CREATE CATEGORIES
+      const categoryMap = new Map<string, string>();
 
-  // 3. CREATE PRODUCTS
-  let productsCreated = 0;
-  let variantsCreated = 0;
+      for (const categoryData of categoriesData) {
+        const parent = await tx.category.create({
+          data: { name: categoryData.name, slug: categoryData.slug },
+        });
+        categoryMap.set(categoryData.name, parent.id);
 
-  for (const productData of productsData) {
-    const categoryId = categoryMap.get(productData.category);
+        for (const childData of categoryData.children) {
+          const child = await tx.category.create({
+            data: { name: childData.name, slug: childData.slug, parentId: parent.id },
+          });
+          categoryMap.set(childData.name, child.id);
+        }
+      }
 
-    if (!categoryId) {
-      throw new Error(`Category "${productData.category}" was not found for product "${productData.name}".`);
-    }
+      // 3. CREATE PRODUCTS
+      let productsCreated = 0;
+      let variantsCreated = 0;
 
-    const product = await prisma.product.create({
-      data: {
-        name: productData.name,
-        slug: productData.slug,
-        description: productData.description,
-        details: productData.details,
-        price: productData.price,
-        featured: productData.featured,
-        newArrival: productData.newArrival,
-        categoryId,
-      },
-    });
+      for (const productData of productsData) {
+        const categoryId = categoryMap.get(productData.category);
 
-    // 4. CREATE IMAGES
-    const imageRecords = productData.images.map((imageUrl, index) => ({
-      productId: product.id,
-      imageUrl,
-      displayOrder: index,
-    }));
-    await prisma.productImage.createMany({
-      data: imageRecords,
-    });
+        if (!categoryId) {
+          throw new Error(`Category "${productData.category}" was not found for product "${productData.name}".`);
+        }
 
-    // 5. CREATE VARIANTS
-    for (const variantData of productData.variants) {
-      await prisma.productVariant.create({
-        data: {
+        const product = await tx.product.create({
+          data: {
+            name: productData.name,
+            slug: productData.slug,
+            description: productData.description,
+            details: productData.details,
+            price: productData.price,
+            featured: productData.featured,
+            newArrival: productData.newArrival,
+            categoryId,
+          },
+        });
+
+        // 4. CREATE IMAGES
+        const imageRecords = productData.images.map((imageUrl, index) => ({
           productId: product.id,
-          color: variantData.color,
-          colorHex: variantData.colorHex,
-          size: variantData.size,
-          stock: variantData.stock,
-          sku: variantData.sku,
-        },
-      });
-      variantsCreated++;
+          imageUrl,
+          displayOrder: index,
+        }));
+        await tx.productImage.createMany({
+          data: imageRecords,
+        });
+
+        // 5. CREATE VARIANTS
+        for (const variantData of productData.variants) {
+          await tx.productVariant.create({
+            data: {
+              productId: product.id,
+              color: variantData.color,
+              colorHex: variantData.colorHex,
+              size: variantData.size,
+              stock: variantData.stock,
+              reservedStock: 0,
+              sku: variantData.sku,
+            },
+          });
+          variantsCreated++;
+        }
+
+        productsCreated++;
+      }
+
+      console.log(`\nSeed Summary:`);
+      console.log(
+        `- Categories (Root + Sub): ${
+          categoriesData.length + categoriesData.reduce((acc, cat) => acc + cat.children.length, 0)
+        }`
+      );
+      console.log(`- Products: ${productsCreated}`);
+      console.log(`- Variants: ${variantsCreated}`);
+
+      // 6. SETUP INITIAL ADMIN
+      const adminEmail = process.env.ADMIN_EMAIL;
+      const adminPassword = process.env.ADMIN_PASSWORD;
+
+      if (adminEmail && adminPassword) {
+        const existingAdmin = await tx.user.findUnique({
+          where: { email: adminEmail },
+        });
+
+        if (!existingAdmin) {
+          const salt = await bcrypt.genSalt(10);
+          const passwordHash = await bcrypt.hash(adminPassword, salt);
+
+          await tx.user.create({
+            data: {
+              email: adminEmail,
+              passwordHash,
+              role: 'ADMIN',
+            },
+          });
+          console.log(`- Admin account created: ${adminEmail}`);
+        } else {
+          console.log(`- Admin account already exists: ${adminEmail}`);
+        }
+      } else {
+        console.log('- Skipped admin creation (ADMIN_EMAIL or ADMIN_PASSWORD missing)');
+      }
+    },
+    {
+      timeout: 60000,
     }
-
-    productsCreated++;
-  }
-
-  console.log(`\nSeed Summary:`);
-  console.log(`- Categories (Root + Sub): ${categoriesData.length + categoriesData.reduce((acc, cat) => acc + cat.children.length, 0)}`);
-  console.log(`- Products: ${productsCreated}`);
-  console.log(`- Variants: ${variantsCreated}`);
-  // 6. SETUP INITIAL ADMIN
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-
-  if (adminEmail && adminPassword) {
-    const existingAdmin = await prisma.user.findUnique({
-      where: { email: adminEmail }
-    });
-
-    if (!existingAdmin) {
-      const bcrypt = require('bcryptjs');
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(adminPassword, salt);
-      
-      await prisma.user.create({
-        data: {
-          email: adminEmail,
-          passwordHash,
-          role: 'ADMIN',
-        },
-      });
-      console.log(`- Admin account created: ${adminEmail}`);
-    } else {
-      console.log(`- Admin account already exists: ${adminEmail}`);
-    }
-  } else {
-    console.log('- Skipped admin creation (ADMIN_EMAIL or ADMIN_PASSWORD missing)');
-  }
+  );
 
   console.log('\nHBS Wear database seed completed successfully. 🌱');
 }
