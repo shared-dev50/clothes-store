@@ -1,215 +1,242 @@
-# HBS Wear — Production Deployment Guide (Render & Vercel)
+# HBS Wear — Manual Production Deployment Guide (Render & Vercel)
 
-This guide documents the exact configuration, environment variables, commands, and order of operations required to deploy the HBS Wear ecommerce application to production using **Render** (Node.js API + PostgreSQL) and **Vercel** (React/Vite SPA).
-
----
-
-## 1. Architecture Overview
-
-* **Frontend**: React 19 + Vite + TypeScript Single Page Application (SPA), hosted on **Vercel**.
-* **Backend**: Node.js + Express 5 + TypeScript + Prisma ORM, hosted on **Render** (Web Service).
-* **Database**: Managed PostgreSQL, hosted on **Render** (or any cloud PostgreSQL provider).
-* **Media & Assets**: Cloudinary (Product images and homepage assets).
-* **Payments**:
-  * Stripe (Credit/Debit Card payments via PaymentIntents & Webhook signatures).
-  * Safaricom Daraja M-Pesa (STK Push prompts & async JSON callbacks).
-* **Background Jobs**: Node-cron in-process worker sweeping expired reservations every minute.
+This guide documents the complete, manual step-by-step procedure for deploying the HBS Wear application to production using **Render** (Node.js API & Managed PostgreSQL) and **Vercel** (React/Vite SPA).
 
 ---
 
-## 2. Render PostgreSQL Setup
+## 1. Architecture & Deployment Model
 
-1. In your **Render Dashboard**, click **New +** and select **PostgreSQL**.
-2. Configure database settings:
-   * **Name**: `hbs-wear-db`
+* **Backend Service**: Node.js + Express 5 + TypeScript + Prisma ORM, deployed manually as a **Render Web Service**.
+* **Database**: Managed **Render PostgreSQL** database.
+* **Frontend SPA**: React 19 + Vite + TypeScript, deployed on **Vercel**.
+* **Media Assets**: Cloudinary (Product images and homepage banners).
+* **Payment Gateways**:
+  * **Stripe**: Card payments via PaymentIntents with server-side webhook signature verification.
+  * **Safaricom Daraja M-Pesa**: STK Push prompts with server-side asynchronous JSON callbacks.
+* **Background Worker**: In-process `node-cron` job sweeping expired stock reservations every minute.
+
+---
+
+## 2. Understanding Render Service Naming
+
+When deploying on Render:
+1. **Web Service Names Must Be Globally Unique**:
+   * Every Render Web Service receives a public URL: `https://<service-name>.onrender.com`.
+   * The subdomain `<service-name>` is registered across the entire global Render platform.
+   * If Render displays a **"Name in use"** error, someone on Render (or another service previously created under your account) has already claimed that name.
+   * **Solution**: Add a unique suffix or identifier (e.g. `hbs-wear-api-mgk` or `hbs-wear-api-<yourname>`).
+2. **PostgreSQL Names**:
+   * The database instance name (e.g. `hbs-wear-db` or `hbs-wear-db-mgk`) only needs to be unique within your Render account or team.
+
+---
+
+## 3. Step 1: Create the Render PostgreSQL Database
+
+1. Log in to the **[Render Dashboard](https://dashboard.render.com/)**.
+2. Click **New +** (top right) and select **PostgreSQL**.
+3. Fill in the database details:
+   * **Name**: `hbs-wear-db-mgk` (or any descriptive name you prefer).
    * **Database**: `hbs_wear`
    * **User**: `hbs_wear_user`
-   * **Region**: Select the region closest to your target audience (e.g., Frankfurt/London for Kenya latency, or Oregon/Ohio).
-   * **PostgreSQL Version**: 16 (default)
-3. Click **Create Database**.
-4. Once created, copy the **Internal Database URL** (used if your backend web service is on Render in the same region) or the **External Database URL** (for remote admin connections or migrations).
+   * **Region**: Choose the region closest to your target users (e.g. Frankfurt or London for lowest latency to Kenya; or Oregon/Ohio).
+   * **PostgreSQL Version**: `16` (default).
+   * **Plan**: `Free` or `Starter`.
+4. Click **Create Database**.
+5. Once provisioned, locate the **Connections** panel:
+   * **Internal Database URL**: Use this value for the Render web service (`DATABASE_URL`). It enables fast, secure internal communication within Render's private network with zero egress bandwidth costs.
+   * **External Database URL**: Save this for remote operations (e.g. running manual migration checks or optional test seeding from your local machine).
 
 ---
 
-## 3. Render Backend Service Setup
+## 4. Step 2: Create the Render Backend Web Service
 
-You can deploy using either the Blueprint (`render.yaml`) or manually through the Render Dashboard.
-
-### Option A: Using the Render Blueprint (`render.yaml`)
-1. In Render Dashboard, click **New +** -> **Blueprint**.
-2. Connect your GitHub repository.
-3. Render reads `render.yaml` and automatically provisions:
-   * The `hbs-wear-db` PostgreSQL instance.
-   * The `hbs-wear-api` Node.js web service with all build and start commands configured.
-
-### Option B: Manual Setup in Render Dashboard
-1. Click **New +** -> **Web Service**.
-2. Connect your GitHub repository.
-3. Configure the following exact settings:
-   * **Name**: `hbs-wear-api`
-   * **Region**: Same region as your PostgreSQL instance.
+1. In the **Render Dashboard**, click **New +** -> **Web Service**.
+2. Select **Build and deploy from a Git repository** and connect your GitHub repository.
+3. Configure the exact manual service settings:
+   * **Name**: Choose an available unique name, e.g. `hbs-wear-api-mgk` (your public URL will be `https://hbs-wear-api-mgk.onrender.com`).
+   * **Region**: **Must be the same region** as your PostgreSQL database created in Step 1.
+   * **Branch**: `main` (or your deployment branch).
    * **Root Directory**: `server`
    * **Runtime**: `Node`
    * **Build Command**:
      ```bash
      npm install && npm run build && npm run prisma:deploy
      ```
-     *(This automatically runs `prisma generate`, compiles TypeScript via `tsc`, and applies pending database migrations via `prisma migrate deploy` before startup).*
+     *This command installs dependencies, generates the Prisma Client (`prisma generate`), compiles TypeScript to `dist/` (`tsc`), and safely applies all 10 Prisma database migrations (`prisma migrate deploy`) without interactive prompts.*
    * **Start Command**:
      ```bash
      npm start
      ```
-     *(Runs `node dist/index.js`, binding to `0.0.0.0:$PORT`).*
-   * **Health Check Path**: `/health` (or `/api/health`)
-   * **Auto-Deploy**: `Yes` (deploys automatically on push to `main`).
+     *Runs `node dist/index.js`, binding to `0.0.0.0:$PORT`.*
+   * **Health Check Path**: `/health`
+     *Returns HTTP 200 `{"status":"ok","service":"hbs-wear-api","database":"connected"}`.*
+   * **Auto-Deploy**: `Yes` (automatically redeploys when you push to GitHub).
+   * **Plan**: `Free` or `Starter`.
 
 ---
 
-## 4. Backend Environment Variables (Render)
+## 5. Step 3: Configure Backend Environment Variables (Render)
 
-Configure these in **Render Dashboard** -> **hbs-wear-api** -> **Environment**:
+In your Render Web Service settings, navigate to **Environment** -> **Add Environment Variable**, and populate the following:
 
-| Variable Name | Required | Description / Example Value |
+| Variable Name | Required | Example / Description |
 | :--- | :---: | :--- |
 | `NODE_ENV` | **Yes** | `production` |
-| `PORT` | **Yes** | Auto-injected by Render (default `10000` or `5000`) |
-| `DATABASE_URL` | **Yes** | Render internal connection string: `postgresql://user:password@dpg-...:5432/hbs_wear` |
-| `CLIENT_URL` | **Yes** | Production frontend URL without trailing slash: `https://hbs-wear.vercel.app` |
-| `ALLOWED_ORIGINS` | No | Comma-separated extra origins (e.g., custom domain or Vercel preview URLs) |
-| `JWT_SECRET` | **Yes** | High-entropy random secret (min 32 chars): `openssl rand -base64 32` |
-| `ADMIN_EMAIL` | No | Initial admin email used if executing seed script (e.g., `admin@hbswear.com`) |
-| `ADMIN_PASSWORD` | No | Initial admin password used if executing seed script |
-| `CLOUDINARY_CLOUD_NAME`| **Yes** | Your Cloudinary Cloud Name |
+| `DATABASE_URL` | **Yes** | Paste the **Internal Database URL** from Step 1 (`postgresql://...`) |
+| `CLIENT_URL` | **Yes** | Production Vercel URL without trailing slash: `https://hbs-wear.vercel.app` *(set temporary `http://localhost:5173` if Vercel URL is not yet created)* |
+| `ALLOWED_ORIGINS` | No | Comma-separated list of extra allowed origins (e.g. custom domain, Vercel preview URLs) |
+| `JWT_SECRET` | **Yes** | High-entropy random string (min 32 chars). Generate in terminal: `openssl rand -base64 32` |
+| `ADMIN_EMAIL` | No | Initial admin email (used only if running optional seed script) |
+| `ADMIN_PASSWORD` | No | Initial admin password (used only if running optional seed script) |
+| `CLOUDINARY_CLOUD_NAME` | **Yes** | Your Cloudinary Cloud Name |
 | `CLOUDINARY_API_KEY` | **Yes** | Your Cloudinary API Key |
-| `CLOUDINARY_API_SECRET`| **Yes** | Your Cloudinary API Secret |
-| `CLOUDINARY_FOLDER` | No | Target folder for uploads (default: `hbs-wear/products`) |
-| `STRIPE_SECRET_KEY` | **Yes** | Secret API key (`sk_live_...` or `sk_test_...`) |
-| `STRIPE_PUBLISHABLE_KEY`| **Yes** | Publishable key (`pk_live_...` or `pk_test_...`) |
-| `STRIPE_WEBHOOK_SECRET`| **Yes** | Endpoint signing secret from Stripe Dashboard (`whsec_...`) |
+| `CLOUDINARY_API_SECRET` | **Yes** | Your Cloudinary API Secret |
+| `CLOUDINARY_FOLDER` | No | Default: `hbs-wear/products` |
+| `STRIPE_SECRET_KEY` | **Yes** | `sk_live_...` (or `sk_test_...`) |
+| `STRIPE_PUBLISHABLE_KEY` | **Yes** | `pk_live_...` (or `pk_test_...`) |
+| `STRIPE_WEBHOOK_SECRET` | **Yes** | Webhook secret from Stripe Dashboard (`whsec_...`) |
 | `DARAJA_CONSUMER_KEY` | **Yes** | Safaricom Daraja Consumer Key |
-| `DARAJA_CONSUMER_SECRET`|**Yes** | Safaricom Daraja Consumer Secret |
-| `DARAJA_SHORTCODE` | **Yes** | Till / Paybill number (default test: `174379`) |
-| `DARAJA_PASSKEY` | **Yes** | Daraja Lipa Na M-Pesa Online Passkey |
-| `DARAJA_CALLBACK_URL` | **Yes** | Public Render HTTPS callback URL: `https://hbs-wear-api.onrender.com/api/payments/mpesa/callback` |
-| `DARAJA_ENVIRONMENT` | **Yes** | `sandbox` (testing) or `production` (live) |
+| `DARAJA_CONSUMER_SECRET`| **Yes** | Safaricom Daraja Consumer Secret |
+| `DARAJA_SHORTCODE` | **Yes** | Paybill or Till number (Sandbox default: `174379`) |
+| `DARAJA_PASSKEY` | **Yes** | Lipa Na M-Pesa Online passkey |
+| `DARAJA_CALLBACK_URL` | **Yes** | Full public callback URL: `https://<your-render-service>.onrender.com/api/payments/mpesa/callback` |
+| `DARAJA_ENVIRONMENT` | **Yes** | `sandbox` (for testing) or `production` (live) |
+
+Click **Save Changes**. Render will trigger the initial build.
 
 ---
 
-## 5. Vercel Frontend Setup
+## 6. Step 4: Deploy the Frontend on Vercel
 
-1. In your **Vercel Dashboard**, click **Add New...** -> **Project**.
-2. Import your GitHub repository.
-3. Configure project settings:
+1. Log in to the **[Vercel Dashboard](https://vercel.com/)**.
+2. Click **Add New...** -> **Project**.
+3. Import your GitHub repository.
+4. Configure the Vercel project:
    * **Framework Preset**: `Vite`
-   * **Root Directory**: `client` *(recommended)* or leave as `./` (both are supported via `client/vercel.json` and root `vercel.json`).
-   * **Build Command**: `npm run build` *(or `cd client && npm install && npm run build` if root).*
-   * **Output Directory**: `dist` *(or `client/dist` if root).*
-4. Add **Environment Variables** in Vercel:
+   * **Root Directory**: Click **Edit** and select `client` *(Recommended)*.
+   * **Build Command**: `npm run build`
+   * **Output Directory**: `dist`
+5. Under **Environment Variables**, add:
 
-| Variable Name | Required | Description / Example Value |
+| Variable Name | Required | Value / Description |
 | :--- | :---: | :--- |
-| `VITE_API_URL` | **Yes** | Public backend API URL ending in `/api` (e.g., `https://hbs-wear-api.onrender.com/api`) |
-| `VITE_STRIPE_PUBLISHABLE_KEY` | No | Optional fallback publishable key (`pk_test_...` or `pk_live_...`). If omitted, client dynamically fetches it from the backend. |
+| `VITE_API_URL` | **Yes** | `https://<your-render-service>.onrender.com/api` *(Must end with `/api`, no trailing slash)* |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | No | Optional fallback publishable key (`pk_live_...` or `pk_test_...`). If omitted, client dynamically fetches it from the backend. |
 
-5. Click **Deploy**.
-6. Once deployed, copy your assigned Vercel URL (e.g., `https://hbs-wear.vercel.app`) and set it as `CLIENT_URL` in your Render backend service.
+6. Click **Deploy**.
+7. Once deployed, copy your assigned Vercel domain (e.g. `https://hbs-wear.vercel.app`).
+
+### SPA Routing on Vercel
+Vercel is automatically configured via [client/vercel.json](file:///Users/MGK/Documents/projects/clothes-store/client/vercel.json) with rewrite rules (`/(.*) -> /index.html`), preventing 404 errors when users refresh deep routes such as `/admin/products`, `/shop`, or `/checkout`.
 
 ---
 
-## 6. Provider Webhooks and Callbacks Configuration
+## 7. Step 5: Link Frontend Domain to Backend CORS
 
-### Stripe Webhook
-1. Go to **Stripe Dashboard** -> **Developers** -> **Webhooks**.
+Now that your production frontend domain is known:
+1. Return to the **Render Dashboard** -> **Web Service** -> **Environment**.
+2. Update `CLIENT_URL` to your live Vercel domain:
+   ```
+   https://hbs-wear.vercel.app
+   ```
+   *(Ensure there is no trailing slash).*
+3. If you have custom domains or Vercel preview environments, add them to `ALLOWED_ORIGINS` (comma-separated):
+   ```
+   https://hbswear.com,https://www.hbswear.com
+   ```
+4. Click **Save Changes**. Render will automatically restart the web service with updated CORS policies.
+
+---
+
+## 8. Step 6: Configure Payment Webhooks and Callbacks
+
+### Stripe Webhook (Production & Test Mode)
+1. In the **[Stripe Dashboard](https://dashboard.stripe.com/)**, navigate to **Developers** -> **Webhooks**.
 2. Click **Add endpoint**.
-3. **Endpoint URL**:
+3. Set **Endpoint URL** to:
    ```
-   https://<your-render-app>.onrender.com/api/payments/stripe/webhook
+   https://<your-render-service>.onrender.com/api/payments/stripe/webhook
    ```
-4. **Events to listen for**:
+4. Select events to listen for:
    * `payment_intent.succeeded`
    * `payment_intent.payment_failed`
 5. Click **Add endpoint**.
-6. Reveal the **Signing secret** (`whsec_...`) and paste it as `STRIPE_WEBHOOK_SECRET` in your Render environment variables.
+6. Reveal the **Signing secret** (`whsec_...`) and update `STRIPE_WEBHOOK_SECRET` in your Render Environment Variables.
 
 ### Safaricom Daraja M-Pesa Callback
-1. In Safaricom Daraja Portal, ensure your app is registered with the correct shortcode.
-2. In your Render backend environment variables, verify `DARAJA_CALLBACK_URL` is set to your live HTTPS domain:
-   ```
-   https://<your-render-app>.onrender.com/api/payments/mpesa/callback
-   ```
-3. Set `DARAJA_ENVIRONMENT` to `production` when using live Till/Paybill credentials (or `sandbox` for testing).
+1. In the Safaricom Developer Portal, ensure your app uses your live Till/Paybill number.
+2. In your Render backend Environment Variables, verify:
+   * `DARAJA_CALLBACK_URL` is set to:
+     ```
+     https://<your-render-service>.onrender.com/api/payments/mpesa/callback
+     ```
+   * `DARAJA_ENVIRONMENT` is set to `sandbox` during testing and `production` when live credentials are supplied.
 
 ---
 
-## 7. Recommended Deployment Order
-
-Follow this sequence to ensure zero-downtime, properly connected deployment:
-
-1. **Create Render PostgreSQL database** (`hbs-wear-db`).
-2. **Deploy Render backend web service** (`hbs-wear-api`):
-   * Populate initial environment variables (`DATABASE_URL`, `JWT_SECRET`, Cloudinary, Stripe, Daraja).
-   * Set temporary `CLIENT_URL` to `http://localhost:5173` if Vercel URL is not known yet.
-   * Verify the build succeeded and `https://<your-render-app>.onrender.com/health` returns `{"status":"ok","database":"connected"}`.
-3. **Deploy Vercel frontend**:
-   * Set `VITE_API_URL` to `https://<your-render-app>.onrender.com/api`.
-   * Trigger deployment and obtain your production URL (e.g. `https://hbs-wear.vercel.app`).
-4. **Link Frontend to Backend CORS**:
-   * Update `CLIENT_URL` in Render to `https://hbs-wear.vercel.app`.
-   * Render will automatically restart the service with the new CORS origin.
-5. **Configure Stripe & Daraja Webhooks**:
-   * Enter the live Render webhook URL in Stripe Dashboard and obtain `STRIPE_WEBHOOK_SECRET`.
-   * Verify `DARAJA_CALLBACK_URL` points to the Render domain.
-
----
-
-## 8. Database Migrations & Optional Seeding
+## 9. Database Migrations & Optional Test Seeding
 
 ### Applying Migrations
-Migrations are applied **automatically** during Render builds via `npm run prisma:deploy`.
+During every Render build, `npm run prisma:deploy` executes `prisma migrate deploy` against `DATABASE_URL`. This automatically creates or updates tables in chronological order without prompting.
+
 To run migrations manually from your local terminal against the remote database:
 ```bash
 cd server
 DATABASE_URL="<render-external-postgres-url>" npx prisma migrate deploy
 ```
 
-### Seeding Test Products & Initial Admin (Optional)
-Seeding is **never** run automatically in production. To intentionally seed the initial catalog and admin user:
+### Seeding Test Data (Optional)
+Seeding is decoupled and **never runs automatically**. To populate initial test products and an administrator account:
 ```bash
 cd server
 DATABASE_URL="<render-external-postgres-url>" \
 ADMIN_EMAIL="admin@example.com" \
-ADMIN_PASSWORD="StrongPassword123!" \
+ADMIN_PASSWORD="YourStrongPassword123!" \
 npm run prisma:seed
 ```
 
 ---
 
-## 9. Preparing a Fresh Database at Handover
+## 10. Smoke Tests & Verification
 
-When handing over the project or launching with a clean production slate:
-1. **Never** delete or reset the development database.
-2. In Render Dashboard, create a **fresh PostgreSQL database instance** (e.g. `hbs-wear-prod-db`).
-3. Point `DATABASE_URL` on the Render backend service to the new database URL.
-4. Render will trigger a build and execute `npm run prisma:deploy`, creating all 10 clean tables with exact indices and constraints.
-5. If desired, create only the administrator user without test products:
-   * Register via `/register` or run a targeted script to insert the primary admin user.
-6. The new store will start with a clean catalog ready for production catalog management.
+Once deployed, run these verification tests against your live endpoints:
+
+1. **Health Check**:
+   ```bash
+   curl -i https://<your-render-service>.onrender.com/health
+   ```
+   Expected response:
+   ```json
+   HTTP/2 200
+   {"status":"ok","service":"hbs-wear-api","timestamp":"...","database":"connected"}
+   ```
+
+2. **Public Product Listing**:
+   ```bash
+   curl -i https://<your-render-service>.onrender.com/api/products
+   ```
+   Expected response: HTTP 200 with JSON array of products.
+
+3. **Homepage Settings**:
+   ```bash
+   curl -i https://<your-render-service>.onrender.com/api/homepage-settings
+   ```
+   Expected response: HTTP 200 with hero image URLs and layout configuration.
+
+4. **Frontend SPA Navigation**:
+   Open `https://<your-vercel-domain>` in your browser.
+   * Verify the hero image renders cleanly without flash.
+   * Navigate to `/shop`, `/product/<slug>`, and `/login`.
+   * Refresh the browser on `/admin/products` to confirm SPA rewrites operate correctly.
 
 ---
 
-## 10. Troubleshooting & Health Verification
+## 11. Security Checklist Before Launch
 
-* **Health Check**:
-  * Visit `https://<your-render-app>.onrender.com/health`.
-  * Expected response: `{"status":"ok","service":"hbs-wear-api","database":"connected"}`.
-* **CORS Errors (`Blocked by CORS`)**:
-  * Check that `CLIENT_URL` on Render matches your exact Vercel domain without trailing slashes.
-  * If using custom domains or Vercel preview URLs, add them to `ALLOWED_ORIGINS` (comma-separated).
-* **SPA 404 on Page Refresh**:
-  * Verified handled by `client/vercel.json` and root `vercel.json` rewrites (`/(.*) -> /index.html`).
-* **Stripe Webhook Signature Verification Failed**:
-  * Confirm `STRIPE_WEBHOOK_SECRET` matches the secret generated for the live Render endpoint in Stripe Dashboard.
-  * Express raw body parser is mounted specifically for `/api/payments/stripe/webhook` before `express.json()`.
-* **Daraja STK Push Not Reaching Phone**:
-  * Confirm `DARAJA_ENVIRONMENT` matches credentials (`sandbox` vs `production`).
-  * Verify `DARAJA_CALLBACK_URL` is reachable over public HTTPS (Render provides automatic SSL).
+* [ ] `.env` files are not tracked in git (verified by `.gitignore`).
+* [ ] `JWT_SECRET` is a strong random secret generated specifically for production.
+* [ ] `DATABASE_URL` uses Render's internal database URL on the web service.
+* [ ] `CLIENT_URL` matches your exact Vercel production domain.
+* [ ] Stripe webhook secret matches the endpoint registered in Stripe Dashboard.
+* [ ] Daraja callback URL uses public HTTPS on Render.
+* [ ] Admin credentials are changed from defaults before handover.
