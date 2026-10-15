@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCartStore, isCartMatchingSnapshot } from '../store/cartStore';
 import { ArrowLeft, CreditCard, Smartphone, ShieldCheck, AlertCircle } from 'lucide-react';
@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import type { Stripe } from '@stripe/stripe-js';
 import { getStripePromise } from '../utils/stripe';
+import { PaymentStatusDialog, type PaymentDialogState } from '../components/ui/PaymentStatusDialog';
 
 interface StripeCardSectionProps {
   formData: {
@@ -257,6 +258,23 @@ export const Checkout: React.FC = () => {
   const [stripeConfigChecked, setStripeConfigChecked] = useState(false);
   const [hasStripePublishableKey, setHasStripePublishableKey] = useState(false);
 
+  // Payment Status Dialog state
+  const [dialogState, setDialogState] = useState<PaymentDialogState>('idle');
+  const [dialogProvider, setDialogProvider] = useState<'mpesa' | 'stripe'>('mpesa');
+  const [dialogOrderNumber, setDialogOrderNumber] = useState<string>('');
+  const [dialogErrorMessage, setDialogErrorMessage] = useState<string>('');
+  const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
+  const mpesaPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cleanup polling timers on unmount
+  useEffect(() => {
+    return () => {
+      if (mpesaPollingRef.current) {
+        clearInterval(mpesaPollingRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     getStripePromise().then(promise => {
       setStripeConfigChecked(true);
@@ -382,14 +400,61 @@ export const Checkout: React.FC = () => {
     setStep(1);
   };
 
+  const startMpesaPolling = (orderNum: string) => {
+    if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
+
+    let pollCount = 0;
+    const maxPolls = 24; // 24 polls * 3s = 72s bounded polling
+
+    mpesaPollingRef.current = setInterval(async () => {
+      pollCount++;
+      try {
+        const statusData = await getPaymentStatus(orderNum);
+        if (statusData.paymentStatus === 'PAID' || statusData.orderStatus === 'PROCESSING') {
+          if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
+          clearCart();
+          clearPendingOrder();
+          setDialogState('success');
+          setIsProcessing(false);
+        } else if (statusData.latestPayment?.status === 'FAILED') {
+          if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
+          setDialogErrorMessage(
+            statusData.latestPayment.failureReason || 'M-Pesa payment prompt was cancelled or declined on your phone.'
+          );
+          setDialogState('failed');
+          setIsProcessing(false);
+        } else if (pollCount >= maxPolls) {
+          if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
+          // Safaricom callback may be delayed; do not mark as failure
+          setDialogState('unknown_outcome');
+          setIsProcessing(false);
+        }
+      } catch {
+        if (pollCount >= maxPolls) {
+          if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
+          setDialogState('unknown_outcome');
+          setIsProcessing(false);
+        }
+      }
+    }, 3000);
+  };
+
   const handleMpesaOrder = async () => {
+    if (isProcessing) return; // Prevent duplicate clicks
+
     if (!formData.email || !formData.firstName || !formData.phone) {
       toast.error('Please complete all contact and delivery fields.');
       setStep(1);
       return;
     }
 
+    const phoneToUse = mpesaPhone || formData.phone;
     setIsProcessing(true);
+    setDialogProvider('mpesa');
+    setDialogState('initiating');
+    setDialogErrorMessage('');
+    setIsDialogOpen(true);
+
     try {
       const payload = {
         customerName: `${formData.firstName} ${formData.lastName}`.trim(),
@@ -407,27 +472,28 @@ export const Checkout: React.FC = () => {
 
       const order = activeOrder || (await createOrder(payload));
       setActiveOrder(order);
+      setDialogOrderNumber(order.orderNumber);
       setPendingOrder({
         orderNumber: order.orderNumber,
         itemsSnapshot: cart.map(item => ({ variantId: item.variantId, quantity: item.quantity }))
       });
 
-      const phoneToUse = mpesaPhone || formData.phone;
-      if (phoneToUse) {
-        try {
-          await initiateMpesa(order.orderNumber, phoneToUse);
-        } catch (mpesaErr: any) {
-          console.warn('M-Pesa STK push notice:', mpesaErr.message);
+      try {
+        await initiateMpesa(order.orderNumber, phoneToUse);
+        setDialogState('waiting_mpesa');
+        startMpesaPolling(order.orderNumber);
+      } catch (mpesaErr: any) {
+        if (mpesaErr.message && mpesaErr.message.toLowerCase().includes('already sent')) {
+          setDialogState('waiting_mpesa');
+          startMpesaPolling(order.orderNumber);
+        } else {
+          throw mpesaErr;
         }
       }
-
-      clearCart();
-      clearPendingOrder();
-      toast.success('Order created! Please complete payment.');
-      navigate(`/order-confirmation/${order.orderNumber}`);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to place order. Please try again.');
-    } finally {
+      console.error('M-Pesa payment error:', err);
+      setDialogErrorMessage(err.message || 'Failed to place order. Please try again.');
+      setDialogState('failed');
       setIsProcessing(false);
     }
   };
@@ -435,8 +501,10 @@ export const Checkout: React.FC = () => {
   const handleCardSuccess = (orderNumber: string) => {
     clearCart();
     clearPendingOrder();
-    toast.success('Payment completed successfully!');
-    navigate(`/order-confirmation/${orderNumber}`);
+    setDialogProvider('stripe');
+    setDialogOrderNumber(orderNumber);
+    setDialogState('success');
+    setIsDialogOpen(true);
   };
 
   if (cart.length === 0) {
@@ -747,6 +815,35 @@ export const Checkout: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <PaymentStatusDialog
+        isOpen={isDialogOpen}
+        state={dialogState}
+        provider={dialogProvider}
+        orderNumber={dialogOrderNumber || activeOrder?.orderNumber || pendingOrder?.orderNumber}
+        amount={total}
+        phoneNumber={mpesaPhone || formData.phone}
+        errorMessage={dialogErrorMessage}
+        onClose={() => {
+          setIsDialogOpen(false);
+          if (dialogState === 'success') {
+            navigate(`/order-confirmation/${dialogOrderNumber || activeOrder?.orderNumber}`);
+          }
+        }}
+        onViewOrder={() => {
+          setIsDialogOpen(false);
+          navigate(`/order-confirmation/${dialogOrderNumber || activeOrder?.orderNumber}`);
+        }}
+        onRetry={() => {
+          setIsDialogOpen(false);
+          setDialogState('idle');
+          setIsProcessing(false);
+        }}
+        onCheckMyOrders={() => {
+          setIsDialogOpen(false);
+          navigate('/orders');
+        }}
+      />
     </div>
   );
 };

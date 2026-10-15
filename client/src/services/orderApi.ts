@@ -123,7 +123,7 @@ export const createStripePayment = async (orderNumber: string) => {
   return response.json();
 };
 
-export const getPaymentStatus = async (orderNumber: string, guestToken?: string) => {
+export const getPaymentStatus = async (orderNumber: string, guestToken?: string, email?: string) => {
   const token =
     guestToken ||
     (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(`guest_token_${orderNumber}`) : null);
@@ -134,8 +134,16 @@ export const getPaymentStatus = async (orderNumber: string, guestToken?: string)
   if (token) {
     headers['x-guest-token'] = token;
   }
+  if (email) {
+    headers['x-guest-email'] = email;
+  }
 
-  const response = await fetch(`${API_URL}/payments/order/${orderNumber}/status`, {
+  let url = `${API_URL}/payments/order/${orderNumber}/status`;
+  if (email) {
+    url += `?email=${encodeURIComponent(email)}`;
+  }
+
+  const response = await fetch(url, {
     headers,
     credentials: 'include',
   });
