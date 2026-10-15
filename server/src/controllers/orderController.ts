@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import prisma from '../config/db';
 import { AuthRequest } from '../middleware/auth';
+import { generateGuestOrderToken } from '../utils/authUtils';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
 export const createOrder = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -123,6 +127,21 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
       return order;
     });
 
+    // For guest checkout: Issue order-specific guest token and set HttpOnly cookie
+    if (!result.userId) {
+      const guestAccessToken = generateGuestOrderToken(result.orderNumber);
+      const isProduction = process.env.NODE_ENV === 'production';
+      res.cookie(`hbs_guest_${result.orderNumber}`, guestAccessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        path: '/',
+      });
+      res.status(201).json({ ...result, guestAccessToken });
+      return;
+    }
+
     res.status(201).json(result);
   } catch (error: any) {
     console.error('Create order error:', error);
@@ -143,20 +162,63 @@ export const getOrder = async (req: AuthRequest, res: Response): Promise<void> =
       return;
     }
 
-    // Security Check: If order belongs to a user, only that user or an ADMIN can view it.
-    // If order is a guest order (userId is null), anyone with the orderNumber can view it (acting as a secret key).
+    // 1. Admin access: full access
+    if (req.user?.role === 'ADMIN') {
+      res.json(order);
+      return;
+    }
+
+    // 2. Registered customer order: must belong to the logged-in customer
     if (order.userId) {
       if (!req.user) {
         res.status(401).json({ error: 'Unauthorized: Please log in to view this order.' });
         return;
       }
-      if (req.user.userId !== order.userId && req.user.role !== 'ADMIN') {
+      if (req.user.userId !== order.userId) {
         res.status(403).json({ error: 'Forbidden: You do not have permission to view this order.' });
         return;
       }
+      res.json(order);
+      return;
     }
-    
-    res.json(order);
+
+    // 3. Guest order: verify order-specific guest token or verified customer email
+    const rawGuestToken =
+      (req.headers['x-guest-token'] as string) ||
+      (req.query.token as string) ||
+      req.cookies?.[`hbs_guest_${order.orderNumber}`] ||
+      (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : undefined);
+
+    let isAuthorizedGuest = false;
+
+    if (rawGuestToken) {
+      try {
+        const decoded = jwt.verify(rawGuestToken, JWT_SECRET) as any;
+        if (decoded && decoded.orderNumber === order.orderNumber) {
+          isAuthorizedGuest = true;
+        }
+      } catch {
+        // Invalid or expired guest token
+      }
+    }
+
+    // Fallback: Matching customer email provided via query param or header (for customer receipt/email links)
+    const verificationEmail = (req.query.email as string) || (req.headers['x-guest-email'] as string);
+    if (verificationEmail && verificationEmail.trim().toLowerCase() === order.customerEmail.toLowerCase()) {
+      isAuthorizedGuest = true;
+    }
+
+    if (isAuthorizedGuest) {
+      res.json(order);
+      return;
+    }
+
+    // Unauthorized guest order lookup: Deny access to prevent order number scraping and personal data disclosure
+    res.status(403).json({
+      error: 'Access denied: Valid order access token or matching customer email is required to view order details.',
+      requiresVerification: true,
+      orderNumber: order.orderNumber,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch order' });
   }
@@ -235,9 +297,41 @@ export const cancelOrder = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    if (order.userId && order.userId !== req.user?.userId && req.user?.role !== 'ADMIN') {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
+    if (order.userId) {
+      if (order.userId !== req.user?.userId && req.user?.role !== 'ADMIN') {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+    } else {
+      // Guest cancellation verification: require guest access token, cookie, or matching email
+      const rawGuestToken =
+        (req.headers['x-guest-token'] as string) ||
+        (req.query.token as string) ||
+        req.cookies?.[`hbs_guest_${order.orderNumber}`] ||
+        (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : undefined);
+
+      let isAuthorizedGuest = false;
+
+      if (rawGuestToken) {
+        try {
+          const decoded = jwt.verify(rawGuestToken, JWT_SECRET) as any;
+          if (decoded && decoded.orderNumber === order.orderNumber) {
+            isAuthorizedGuest = true;
+          }
+        } catch {}
+      }
+
+      const verificationEmail = (req.query.email as string) || (req.headers['x-guest-email'] as string);
+      if (verificationEmail && verificationEmail.trim().toLowerCase() === order.customerEmail.toLowerCase()) {
+        isAuthorizedGuest = true;
+      }
+
+      if (!isAuthorizedGuest && req.user?.role !== 'ADMIN') {
+        res.status(403).json({
+          error: 'Forbidden: Valid order access token or matching customer email is required to cancel this order.'
+        });
+        return;
+      }
     }
 
     if (order.status === 'CANCELLED') {

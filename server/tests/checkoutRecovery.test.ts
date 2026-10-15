@@ -169,7 +169,9 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
     expect(dbVariant?.reservedStock).toBe(2);
 
     // Customer returns to checkout: fetches order to verify status and items
-    const fetchRes = await request(app).get(`/api/orders/${order.orderNumber}`);
+    const fetchRes = await request(app)
+      .get(`/api/orders/${order.orderNumber}`)
+      .set('x-guest-token', order.guestAccessToken);
     expect(fetchRes.status).toBe(200);
     expect(fetchRes.body.orderNumber).toBe(order.orderNumber);
     expect(fetchRes.body.status).toBe('PENDING_PAYMENT');
@@ -214,7 +216,9 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
     const order = orderRes.body;
 
     // Simulate page refresh: client calls getOrder(orderNumber)
-    const refreshRes = await request(app).get(`/api/orders/${order.orderNumber}`);
+    const refreshRes = await request(app)
+      .get(`/api/orders/${order.orderNumber}`)
+      .set('x-guest-token', order.guestAccessToken);
     expect(refreshRes.status).toBe(200);
     expect(refreshRes.body.status).toBe('PENDING_PAYMENT');
     expect(refreshRes.body.paymentStatus).toBe('UNPAID');
@@ -278,7 +282,9 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
     expect(varB?.reservedStock).toBe(3);
 
     // Also test explicit cancellation endpoint on Order 2
-    const cancelRes = await request(app).post(`/api/orders/${order2.orderNumber}/cancel`);
+    const cancelRes = await request(app)
+      .post(`/api/orders/${order2.orderNumber}/cancel`)
+      .set('x-guest-token', order2.guestAccessToken);
     expect(cancelRes.status).toBe(200);
 
     const cancelledOrder2 = await prisma.order.findUnique({ where: { id: order2.id } });
@@ -566,7 +572,9 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
         .send(payloadString);
 
       // Now customer attempts to cancel
-      const cancelRes = await request(app).post(`/api/orders/${order.orderNumber}/cancel`);
+      const cancelRes = await request(app)
+        .post(`/api/orders/${order.orderNumber}/cancel`)
+        .set('x-guest-token', order.guestAccessToken);
       expect(cancelRes.status).toBe(400);
       expect(cancelRes.body.error).toMatch(/already been paid/i);
 
@@ -604,7 +612,9 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
       });
 
       // Customer cancels first
-      const cancelRes = await request(app).post(`/api/orders/${order.orderNumber}/cancel`);
+      const cancelRes = await request(app)
+        .post(`/api/orders/${order.orderNumber}/cancel`)
+        .set('x-guest-token', order.guestAccessToken);
       expect(cancelRes.status).toBe(200);
 
       let dbVariant = await prisma.productVariant.findUnique({ where: { id: variantA.id } });
@@ -679,7 +689,9 @@ describe('Checkout Recovery and Inventory Reservation Hardening', () => {
     expect(order3Fail.body.error).toMatch(/Insufficient stock/i);
 
     // Customer 1 cancels their order
-    await request(app).post(`/api/orders/${order1.body.orderNumber}/cancel`);
+    await request(app)
+      .post(`/api/orders/${order1.body.orderNumber}/cancel`)
+      .set('x-guest-token', order1.body.guestAccessToken);
 
     dbVariant = await prisma.productVariant.findUnique({ where: { id: variantA.id } });
     expect(dbVariant?.reservedStock).toBe(4); // Available = 6

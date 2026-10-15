@@ -87,6 +87,17 @@ export const generateAccessToken = (user: { id: string; email: string; role: str
   );
 };
 
+export const generateGuestOrderToken = (orderNumber: string): string => {
+  return jwt.sign(
+    {
+      orderNumber,
+      kind: 'guest_order_access',
+    },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+};
+
 export const getRefreshTokenCookieOptions = (): CookieOptions => {
   const isProduction = process.env.NODE_ENV === 'production';
   return {

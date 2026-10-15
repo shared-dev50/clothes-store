@@ -25,6 +25,9 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Deduplicate concurrent in-flight refresh requests
+let activeRefreshPromise: Promise<string | null> | null = null;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
@@ -40,17 +43,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (err) {
       console.warn('Backend logout warning:', err);
     } finally {
+      activeRefreshPromise = null;
       get().clearAuth();
     }
   },
 
   initializeAuth: async () => {
     try {
-      const res = await apiRefreshToken();
-      if (res.token && res.user) {
-        set({ user: res.user, token: res.token, isInitializing: false });
-        return;
-      }
+      const token = await get().refreshSession();
+      if (token) return;
     } catch {
       // No active or valid refresh cookie, user is a guest
     }
@@ -58,17 +59,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   refreshSession: async () => {
-    try {
-      const res = await apiRefreshToken();
-      if (res.token && res.user) {
-        set({ user: res.user, token: res.token, isInitializing: false });
-        return res.token;
-      }
-    } catch (err) {
-      console.warn('Session refresh failed:', err);
-      get().clearAuth();
+    if (activeRefreshPromise) {
+      return activeRefreshPromise;
     }
-    return null;
+
+    activeRefreshPromise = (async () => {
+      try {
+        const res = await apiRefreshToken();
+        if (res.token && res.user) {
+          set({ user: res.user, token: res.token, isInitializing: false });
+          return res.token;
+        }
+      } catch (err) {
+        console.warn('Session refresh failed:', err);
+        get().clearAuth();
+      } finally {
+        activeRefreshPromise = null;
+      }
+      return null;
+    })();
+
+    return activeRefreshPromise;
   },
 
   isAuthenticated: () => !!get().token,

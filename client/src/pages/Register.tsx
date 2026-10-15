@@ -25,6 +25,7 @@ export const Register: React.FC = () => {
   // Success state when registration completes
   const [isRegistered, setIsRegistered] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const [emailDeliveryFailed, setEmailDeliveryFailed] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
   const passwordRules = checkPasswordRules(password);
@@ -69,10 +70,15 @@ export const Register: React.FC = () => {
     setIsLoading(true);
 
     try {
-      await register(name.trim(), email.trim(), password);
+      const res = await register(name.trim(), email.trim(), password);
       setRegisteredEmail(email.trim());
       setIsRegistered(true);
-      toast.success('Account created! Please check your email.');
+      if (res.emailDeliveryFailed) {
+        setEmailDeliveryFailed(true);
+        toast.error('Account created, but verification email could not be sent. Please resend below.');
+      } else {
+        toast.success('Account created! Please check your email.');
+      }
     } catch (err: any) {
       setError(err.message || 'An error occurred during registration');
     } finally {
@@ -104,13 +110,22 @@ export const Register: React.FC = () => {
             <h2 className="text-2xl font-display font-medium uppercase tracking-widest text-brand-black">
               Verify your email
             </h2>
-            <p className="mt-3 text-sm text-brand-taupe leading-relaxed">
-              We've sent a one-time verification link to{' '}
-              <strong className="text-brand-black">{registeredEmail}</strong>.
-            </p>
-            <p className="mt-2 text-xs text-brand-taupe leading-relaxed">
-              Please click the link in your email to activate your account and start shopping.
-            </p>
+            {emailDeliveryFailed ? (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800 text-left space-y-1">
+                <p className="font-semibold">⚠️ Automatic email delivery failed</p>
+                <p>We created your account, but our email provider could not deliver the activation link immediately. Please click below to resend, or contact support if the issue persists.</p>
+              </div>
+            ) : (
+              <>
+                <p className="mt-3 text-sm text-brand-taupe leading-relaxed">
+                  We've sent a one-time verification link to{' '}
+                  <strong className="text-brand-black">{registeredEmail}</strong>.
+                </p>
+                <p className="mt-2 text-xs text-brand-taupe leading-relaxed">
+                  Please click the link in your email to activate your account and start shopping.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="pt-4 border-t border-brand-stone/60 space-y-4">

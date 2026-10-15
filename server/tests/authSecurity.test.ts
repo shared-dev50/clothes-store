@@ -2,6 +2,7 @@ import request from 'supertest';
 import app from '../src/index';
 import prisma from '../src/config/db';
 import { hashToken } from '../src/utils/authUtils';
+import * as emailService from '../src/services/emailService';
 import { resendVerificationLimiterInstance } from '../src/middleware/rateLimiter';
 
 describe('HBS Wear — Authentication, Registration & Account Security', () => {
@@ -123,6 +124,45 @@ describe('HBS Wear — Authentication, Registration & Account Security', () => {
 
       expect(res.status).toBe(409);
       expect(res.body.error).toMatch(/already exists/i);
+    });
+
+    it('prevents privilege escalation by ignoring role parameter on registration', async () => {
+      const email = `attacker_${timestamp}@example.com`;
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Privilege Attacker',
+          email,
+          password: strongPassword,
+          role: 'ADMIN',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.user.role).toBe('CUSTOMER');
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      expect(user?.role).toBe('CUSTOMER');
+    });
+
+    it('reports emailDeliveryFailed when email dispatch fails', async () => {
+      const email = `undelivered_${timestamp}@example.com`;
+      const sendEmailSpy = jest.spyOn(emailService, 'sendVerificationEmail').mockResolvedValueOnce({
+        success: false,
+        error: 'Resend API key rejected in simulation',
+      });
+
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Undelivered Customer',
+          email,
+          password: strongPassword,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.emailDeliveryFailed).toBe(true);
+      expect(res.body.message).toMatch(/could not be delivered/i);
+      sendEmailSpy.mockRestore();
     });
   });
 
@@ -349,7 +389,27 @@ describe('HBS Wear — Authentication, Registration & Account Security', () => {
       });
       expect(oldRecord?.revokedAt).not.toBeNull();
 
-      // Test Reuse Detection: Attempting to use the old revoked refresh token!
+      // Test Concurrency Grace Period: Presenting the just-revoked token within 15s grace window
+      // simulates a race condition between two simultaneous client requests.
+      const concurrentRes = await request(app)
+        .post('/api/auth/refresh')
+        .set('Cookie', [refreshCookie]);
+
+      expect(concurrentRes.status).toBe(200);
+      expect(concurrentRes.body.token).toBeDefined();
+
+      // Verify active sessions are NOT wiped due to the concurrent request
+      const activeTokens = await prisma.refreshToken.findMany({
+        where: { user: { email: testCustomerEmail }, revokedAt: null },
+      });
+      expect(activeTokens.length).toBeGreaterThan(0);
+
+      // Test Reuse Detection AFTER grace window (simulating malicious replay of old token)
+      await prisma.refreshToken.update({
+        where: { id: oldRecord!.id },
+        data: { revokedAt: new Date(Date.now() - 30 * 1000) }, // 30 seconds ago (beyond 15s grace period)
+      });
+
       const reuseRes = await request(app)
         .post('/api/auth/refresh')
         .set('Cookie', [refreshCookie]);
@@ -357,7 +417,7 @@ describe('HBS Wear — Authentication, Registration & Account Security', () => {
       expect(reuseRes.status).toBe(401);
       expect(reuseRes.body.error).toMatch(/compromised/i);
 
-      // Verify ALL active refresh tokens for this user were revoked due to reuse
+      // Verify ALL active refresh tokens for this user were revoked due to genuine reuse
       const userTokens = await prisma.refreshToken.findMany({
         where: { user: { email: testCustomerEmail }, revokedAt: null },
       });
@@ -533,8 +593,12 @@ describe('HBS Wear — Authentication, Registration & Account Security', () => {
     });
   });
 
-  describe('7. Guest Checkout Remains Functional Without Login', () => {
-    it('allows creating an order without any authentication header', async () => {
+  describe('7. Guest Checkout and Order Access Security', () => {
+    let guestOrderNumber: string;
+    let guestAccessToken: string;
+    const guestEmail = `guest_${timestamp}@example.com`;
+
+    it('allows creating an order without any authentication header and returns guestAccessToken', async () => {
       // Create a category and product for checkout
       const category = await prisma.category.create({
         data: { name: 'Guest Category ' + timestamp, slug: 'guest-cat-' + timestamp },
@@ -563,7 +627,7 @@ describe('HBS Wear — Authentication, Registration & Account Security', () => {
             { productId: product.id, variantId: product.variants[0].id, quantity: 1 },
           ],
           customerName: 'Guest Customer',
-          customerEmail: `guest_${timestamp}@example.com`,
+          customerEmail: guestEmail,
           customerPhone: '0712345678',
           deliveryAddress: 'Kilimani, Nairobi',
           county: 'Nairobi',
@@ -572,6 +636,85 @@ describe('HBS Wear — Authentication, Registration & Account Security', () => {
       expect(res.status).toBe(201);
       expect(res.body.orderNumber).toBeDefined();
       expect(res.body.userId).toBeNull();
+      expect(res.body.guestAccessToken).toBeDefined();
+
+      guestOrderNumber = res.body.orderNumber;
+      guestAccessToken = res.body.guestAccessToken;
+    });
+
+    it('rejects unauthorized guest order lookup by order number alone (403 Forbidden)', async () => {
+      const res = await request(app).get(`/api/orders/${guestOrderNumber}`);
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/Access denied/i);
+    });
+
+    it('allows guest order lookup when valid x-guest-token header is provided', async () => {
+      const res = await request(app)
+        .get(`/api/orders/${guestOrderNumber}`)
+        .set('x-guest-token', guestAccessToken);
+
+      expect(res.status).toBe(200);
+      expect(res.body.orderNumber).toBe(guestOrderNumber);
+      expect(res.body.customerName).toBe('Guest Customer');
+      expect(res.body.customerEmail).toBe(guestEmail);
+      expect(res.body.deliveryAddress).toBe('Kilimani, Nairobi');
+    });
+
+    it('allows guest order lookup when matching customer email query parameter is provided', async () => {
+      const res = await request(app)
+        .get(`/api/orders/${guestOrderNumber}`)
+        .query({ email: guestEmail });
+
+      expect(res.status).toBe(200);
+      expect(res.body.orderNumber).toBe(guestOrderNumber);
+      expect(res.body.customerName).toBe('Guest Customer');
+    });
+
+    it('rejects guest order cancellation without guest token or matching email (403 Forbidden)', async () => {
+      const res = await request(app).post(`/api/orders/${guestOrderNumber}/cancel`);
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/Forbidden/i);
+    });
+
+    it('allows guest order cancellation with valid x-guest-token header', async () => {
+      const res = await request(app)
+        .post(`/api/orders/${guestOrderNumber}/cancel`)
+        .set('x-guest-token', guestAccessToken);
+
+      expect(res.status).toBe(200);
+      expect(res.body.order.status).toBe('CANCELLED');
+    });
+
+    it('redacts sensitive payment metadata on payment status lookup for unauthorized guest requests', async () => {
+      // Create a test payment record with sensitive metadata and phone number
+      const order = await prisma.order.findUnique({ where: { orderNumber: guestOrderNumber } });
+      await prisma.payment.create({
+        data: {
+          orderId: order!.id,
+          provider: 'MPESA',
+          status: 'PENDING',
+          amount: order!.total,
+          currency: 'KES',
+          phoneNumber: '254712345678',
+          metadata: { secretField: 'secret-card-ref' },
+        },
+      });
+
+      // Unauthorized request: without guest token
+      const res = await request(app).get(`/api/payments/order/${guestOrderNumber}/status`);
+      expect(res.status).toBe(200);
+      expect(res.body.paymentStatus).toBeDefined();
+      expect(res.body.latestPayment).toBeDefined();
+      expect(res.body.latestPayment.status).toBe('PENDING');
+      expect(res.body.latestPayment.phoneNumber).toBeNull();
+      expect(res.body.latestPayment.metadata).toBeNull();
+
+      // Authorized request: with x-guest-token receives full payment info
+      const authRes = await request(app)
+        .get(`/api/payments/order/${guestOrderNumber}/status`)
+        .set('x-guest-token', guestAccessToken);
+      expect(authRes.status).toBe(200);
+      expect(authRes.body.latestPayment.phoneNumber).toBe('254712345678');
     });
   });
 });

@@ -17,7 +17,7 @@ export interface SendEmailOptions {
 export const sendEmail = async (options: SendEmailOptions): Promise<{ success: boolean; error?: string }> => {
   const isProduction = process.env.NODE_ENV === 'production';
 
-  if (!RESEND_API_KEY) {
+  if (!RESEND_API_KEY || process.env.NODE_ENV === 'test') {
     if (!isProduction) {
       console.log(`[EmailService:Dev] Simulation email sent to ${options.to}: Subject="${options.subject}"`);
       if (process.env.NODE_ENV === 'development') {

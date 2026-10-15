@@ -146,30 +146,41 @@ export const OrderConfirmation: React.FC = () => {
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripeError, setStripeError] = useState<string | null>(null);
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+  const [verifyEmailInput, setVerifyEmailInput] = useState('');
+
+  const fetchOrder = async (emailOverride?: string) => {
+    if (!orderNumber) return;
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlToken = searchParams.get('token');
+      if (urlToken && typeof sessionStorage !== 'undefined') {
+        try {
+          sessionStorage.setItem(`guest_token_${orderNumber}`, urlToken);
+        } catch {}
+      }
+
+      const data = await getOrder(orderNumber, urlToken || undefined, emailOverride);
+      setOrder(data);
+      setError('');
+      if (data.paymentStatus === 'PAID') {
+        useCartStore.getState().clearCart();
+        useCartStore.getState().clearPendingOrder();
+      }
+      if (data.customerPhone) {
+        setMpesaPhone(data.customerPhone);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load order details.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!orderNumber) {
       navigate('/');
       return;
     }
-
-    const fetchOrder = async () => {
-      try {
-        const data = await getOrder(orderNumber);
-        setOrder(data);
-        if (data.paymentStatus === 'PAID') {
-          useCartStore.getState().clearCart();
-          useCartStore.getState().clearPendingOrder();
-        }
-        if (data.customerPhone) {
-          setMpesaPhone(data.customerPhone);
-        }
-      } catch {
-        setError('Failed to load order details.');
-      } finally {
-        setLoading(false);
-      }
-    };
 
     fetchOrder();
   }, [orderNumber, navigate]);
@@ -243,10 +254,54 @@ export const OrderConfirmation: React.FC = () => {
   }
 
   if (error || !order) {
+    const isVerificationNeeded = Boolean(
+      error && (
+        error.toLowerCase().includes('access denied') ||
+        error.toLowerCase().includes('email is required') ||
+        error.toLowerCase().includes('forbidden')
+      )
+    );
+
     return (
       <div className="w-full max-w-3xl mx-auto px-4 py-24 text-center">
-        <h1 className="text-2xl font-display uppercase tracking-widest mb-4 text-red-600">Order Not Found</h1>
-        <p className="text-brand-taupe mb-8">{error || 'We could not find the order you are looking for.'}</p>
+        {isVerificationNeeded ? (
+          <div>
+            <h1 className="text-2xl font-display uppercase tracking-widest mb-4 text-brand-black">Order Verification</h1>
+            <p className="text-brand-taupe mb-6 text-sm max-w-md mx-auto">
+              To protect your privacy and personal details, please enter the email address used during checkout to view order #{orderNumber}.
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (verifyEmailInput.trim()) {
+                  setLoading(true);
+                  fetchOrder(verifyEmailInput.trim());
+                }
+              }}
+              className="max-w-md mx-auto mb-8 flex gap-2"
+            >
+              <input
+                type="email"
+                value={verifyEmailInput}
+                onChange={(e) => setVerifyEmailInput(e.target.value)}
+                placeholder="Enter checkout email"
+                required
+                className="flex-1 px-3 py-3 border border-brand-stone bg-transparent text-sm focus:outline-none focus:ring-1 focus:ring-brand-black"
+              />
+              <button
+                type="submit"
+                className="px-6 py-3 bg-brand-black text-brand-white text-xs font-semibold uppercase tracking-widest hover:bg-brand-taupe transition-colors"
+              >
+                Verify
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div>
+            <h1 className="text-2xl font-display uppercase tracking-widest mb-4 text-red-600">Order Not Found</h1>
+            <p className="text-brand-taupe mb-8">{error || 'We could not find the order you are looking for.'}</p>
+          </div>
+        )}
         <button
           onClick={() => navigate('/shop')}
           className="px-8 py-4 bg-brand-black text-brand-white text-sm font-semibold uppercase tracking-widest hover:bg-brand-black/90 transition-colors"

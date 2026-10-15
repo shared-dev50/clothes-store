@@ -32,6 +32,7 @@ export const createOrder = async (payload: CreateOrderPayload) => {
       'Content-Type': 'application/json',
       ...getAuthHeaders(),
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   });
 
@@ -40,27 +41,58 @@ export const createOrder = async (payload: CreateOrderPayload) => {
     throw new Error(errorData.error || 'Failed to create order');
   }
 
-  return response.json();
+  const data = await response.json();
+  if (data.guestAccessToken && typeof sessionStorage !== 'undefined') {
+    try {
+      sessionStorage.setItem(`guest_token_${data.orderNumber}`, data.guestAccessToken);
+    } catch {}
+  }
+
+  return data;
 };
 
-export const getOrder = async (orderNumber: string) => {
-  const response = await fetch(`${API_URL}/orders/${orderNumber}`, {
-    headers: {
-      ...getAuthHeaders(),
-    }
+export const getOrder = async (orderNumber: string, guestToken?: string, email?: string) => {
+  const token =
+    guestToken ||
+    (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(`guest_token_${orderNumber}`) : null);
+
+  const headers: Record<string, string> = {
+    ...getAuthHeaders(),
+  };
+  if (token) {
+    headers['x-guest-token'] = token;
+  }
+
+  let url = `${API_URL}/orders/${orderNumber}`;
+  if (!token && email) {
+    url += `?email=${encodeURIComponent(email)}`;
+  }
+
+  const response = await fetch(url, {
+    headers,
+    credentials: 'include',
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch order');
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to fetch order');
   }
 
   return response.json();
 };
 
 export const initiateMpesa = async (orderNumber: string, phoneNumber: string) => {
+  const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(`guest_token_${orderNumber}`) : null;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...getAuthHeaders(),
+  };
+  if (token) headers['x-guest-token'] = token;
+
   const response = await fetch(`${API_URL}/payments/mpesa/stk-push`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    headers,
+    credentials: 'include',
     body: JSON.stringify({ orderNumber, phoneNumber })
   });
   if (!response.ok) {
@@ -71,9 +103,17 @@ export const initiateMpesa = async (orderNumber: string, phoneNumber: string) =>
 };
 
 export const createStripePayment = async (orderNumber: string) => {
+  const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(`guest_token_${orderNumber}`) : null;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...getAuthHeaders(),
+  };
+  if (token) headers['x-guest-token'] = token;
+
   const response = await fetch(`${API_URL}/payments/stripe/create`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    headers,
+    credentials: 'include',
     body: JSON.stringify({ orderNumber })
   });
   if (!response.ok) {
@@ -83,9 +123,21 @@ export const createStripePayment = async (orderNumber: string) => {
   return response.json();
 };
 
-export const getPaymentStatus = async (orderNumber: string) => {
+export const getPaymentStatus = async (orderNumber: string, guestToken?: string) => {
+  const token =
+    guestToken ||
+    (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(`guest_token_${orderNumber}`) : null);
+
+  const headers: Record<string, string> = {
+    ...getAuthHeaders(),
+  };
+  if (token) {
+    headers['x-guest-token'] = token;
+  }
+
   const response = await fetch(`${API_URL}/payments/order/${orderNumber}/status`, {
-    headers: getAuthHeaders()
+    headers,
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new Error('Failed to fetch payment status');
@@ -95,7 +147,8 @@ export const getPaymentStatus = async (orderNumber: string) => {
 
 export const getStripeConfig = async (): Promise<{ publishableKey: string }> => {
   const response = await fetch(`${API_URL}/payments/stripe/config`, {
-    headers: getAuthHeaders()
+    headers: getAuthHeaders(),
+    credentials: 'include',
   });
   if (!response.ok) {
     return { publishableKey: '' };
@@ -103,13 +156,23 @@ export const getStripeConfig = async (): Promise<{ publishableKey: string }> => 
   return response.json();
 };
 
-export const cancelOrder = async (orderNumber: string) => {
+export const cancelOrder = async (orderNumber: string, guestToken?: string) => {
+  const token =
+    guestToken ||
+    (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(`guest_token_${orderNumber}`) : null);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...getAuthHeaders(),
+  };
+  if (token) {
+    headers['x-guest-token'] = token;
+  }
+
   const response = await fetch(`${API_URL}/orders/${orderNumber}/cancel`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-    }
+    headers,
+    credentials: 'include',
   });
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

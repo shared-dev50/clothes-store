@@ -15,6 +15,7 @@ export interface AuthResponse {
   user?: User;
   error?: string;
   needsEmailVerification?: boolean;
+  emailDeliveryFailed?: boolean;
   email?: string;
 }
 

@@ -1,9 +1,12 @@
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
+import jwt from 'jsonwebtoken';
 import { PaymentProvider, PaymentModelStatus } from '@prisma/client';
 import prisma from '../config/db';
 import { AuthRequest } from '../middleware/auth';
 import Stripe from 'stripe';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
 // ==========================================
 // M-PESA DARAJA
@@ -218,7 +221,7 @@ export const initiateMpesa = async (req: AuthRequest, res: Response): Promise<vo
     let checkoutRequestId = `MOCK_REQ_${randomUUID()}`;
     let customerMessage = 'Success. Request accepted for processing';
 
-    if (DARAJA_CONSUMER_KEY !== 'placeholder_consumer_key') {
+    if (process.env.NODE_ENV !== 'test' && DARAJA_CONSUMER_KEY !== 'placeholder_consumer_key') {
       const timestamp = getDarajaTimestamp();
       const password = Buffer.from(`${DARAJA_SHORTCODE}${DARAJA_PASSKEY}${timestamp}`).toString('base64');
 
@@ -762,9 +765,54 @@ export const getPaymentStatus = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    if (order.userId && order.userId !== req.user?.userId && req.user?.role !== 'ADMIN') {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
+    if (order.userId) {
+      if (order.userId !== req.user?.userId && req.user?.role !== 'ADMIN') {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+    } else {
+      // Guest order verification
+      const rawGuestToken =
+        (req.headers['x-guest-token'] as string) ||
+        (req.query.token as string) ||
+        req.cookies?.[`hbs_guest_${order.orderNumber}`] ||
+        (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : undefined);
+
+      let isAuthorizedGuest = false;
+
+      if (rawGuestToken) {
+        try {
+          const decoded = jwt.verify(rawGuestToken, JWT_SECRET) as any;
+          if (decoded && decoded.orderNumber === order.orderNumber) {
+            isAuthorizedGuest = true;
+          }
+        } catch {}
+      }
+
+      const verificationEmail = (req.query.email as string) || (req.headers['x-guest-email'] as string);
+      if (verificationEmail && verificationEmail.trim().toLowerCase() === order.customerEmail.toLowerCase()) {
+        isAuthorizedGuest = true;
+      }
+
+      // If not authorized and not admin, return status with sensitive details (phone, metadata) redacted
+      if (!isAuthorizedGuest && req.user?.role !== 'ADMIN') {
+        const latest = order.payments[0];
+        res.json({
+          paymentStatus: order.paymentStatus,
+          orderStatus: order.status,
+          latestPayment: latest
+            ? {
+                id: latest.id,
+                status: latest.status,
+                provider: latest.provider,
+                failureReason: latest.failureReason,
+                phoneNumber: null,
+                metadata: null,
+              }
+            : null,
+        });
+        return;
+      }
     }
 
     res.json({

@@ -76,10 +76,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
 
     // Send verification email
-    await sendVerificationEmail(user.email, rawVerificationToken, user.name || undefined);
+    const emailResult = await sendVerificationEmail(user.email, rawVerificationToken, user.name || undefined);
 
     res.status(201).json({
-      message: 'Account created successfully. Please check your email to verify your account.',
+      message: emailResult.success
+        ? 'Account created successfully. Please check your email to verify your account.'
+        : 'Account created, but verification email could not be delivered. Please use resend verification or contact support.',
+      emailDeliveryFailed: !emailResult.success,
       user: {
         id: user.id,
         email: user.email,
@@ -190,8 +193,34 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Refresh Token Reuse Detection
+    // Refresh Token Reuse Detection & Concurrency Grace Period
     if (tokenRecord.revokedAt !== null) {
+      const elapsedSinceRevocation = Date.now() - tokenRecord.revokedAt.getTime();
+      const ROTATION_GRACE_PERIOD_MS = 15 * 1000; // 15-second grace window for in-flight concurrent requests
+
+      // If the token was revoked within the grace window and was replaced by an active successor token
+      if (elapsedSinceRevocation <= ROTATION_GRACE_PERIOD_MS && tokenRecord.replacedByTokenHash) {
+        const replacementRecord = await prisma.refreshToken.findUnique({
+          where: { tokenHash: tokenRecord.replacedByTokenHash },
+        });
+
+        if (replacementRecord && replacementRecord.revokedAt === null && replacementRecord.expiresAt > new Date()) {
+          // Concurrent request during rotation: issue fresh access token without invalidating sessions
+          const accessToken = generateAccessToken(tokenRecord.user);
+          res.json({
+            token: accessToken,
+            user: {
+              id: tokenRecord.user.id,
+              email: tokenRecord.user.email,
+              name: tokenRecord.user.name,
+              role: tokenRecord.user.role,
+              isEmailVerified: tokenRecord.user.isEmailVerified,
+            },
+          });
+          return;
+        }
+      }
+
       console.warn(`[Security Alert] Refresh token reuse detected for user ${tokenRecord.userId}! Revoking all active sessions.`);
       // Invalidate all refresh tokens for this user
       await prisma.refreshToken.updateMany({

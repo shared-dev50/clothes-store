@@ -18,17 +18,28 @@ import {
   forgotPasswordRateLimiter,
   resetPasswordRateLimiter,
   verifyEmailRateLimiter,
+  refreshRateLimiter,
 } from '../middleware/rateLimiter';
+import { Request, Response, NextFunction } from 'express';
 
 const router = Router();
+
+// CSRF Defense-in-depth: Reject cross-site simple navigation submissions targeting cookie-authenticated routes
+const cookieCsrfProtection = (req: Request, res: Response, next: NextFunction): void => {
+  if (req.headers['sec-fetch-mode'] === 'navigate') {
+    res.status(403).json({ error: 'Cross-site form navigation rejected' });
+    return;
+  }
+  next();
+};
 
 // Registration & Login
 router.post('/register', registerRateLimiter, register);
 router.post('/login', loginRateLimiter, login);
 
 // Session Management
-router.post('/refresh', refreshToken);
-router.post('/logout', logout);
+router.post('/refresh', cookieCsrfProtection, refreshRateLimiter, refreshToken);
+router.post('/logout', cookieCsrfProtection, logout);
 router.get('/me', authenticate, getMe);
 
 // Email Verification

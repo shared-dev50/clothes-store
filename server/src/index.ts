@@ -12,6 +12,8 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const app = express();
+// Enable trust proxy for Render / reverse proxies (accurately extracts client IP and protocol)
+app.set('trust proxy', 1);
 const PORT = Number(process.env.PORT) || 5000;
 const HOST = '0.0.0.0';
 const rawClientUrl = process.env.CLIENT_URL || 'http://localhost:5173';

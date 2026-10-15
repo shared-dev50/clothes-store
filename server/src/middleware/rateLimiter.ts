@@ -37,7 +37,7 @@ class InMemoryRateLimiter {
     }
   }
 
-  public middleware(keyExtractor?: (req: Request) => string) {
+  public middleware(keyExtractor?: (req: Request, clientIp: string) => string) {
     return (req: Request, res: Response, next: NextFunction): void => {
       // In automated test mode, bypass unless explicitly testing rate limits
       if (process.env.NODE_ENV === 'test' && req.headers['x-test-enforce-rate-limit'] !== 'true') {
@@ -46,7 +46,7 @@ class InMemoryRateLimiter {
       }
 
       const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || 'unknown-ip';
-      const customKey = keyExtractor ? keyExtractor(req) : '';
+      const customKey = keyExtractor ? keyExtractor(req, ip) : '';
       const key = `${customKey || ip}`;
 
       const now = Date.now();
@@ -61,7 +61,7 @@ class InMemoryRateLimiter {
 
       if (record.timestamps.length >= this.maxRequests) {
         const oldest = record.timestamps[0];
-        const retryAfterSeconds = Math.ceil((this.windowMs - (now - oldest)) / 1000);
+        const retryAfterSeconds = Math.max(1, Math.ceil((this.windowMs - (now - oldest)) / 1000));
         res.setHeader('Retry-After', retryAfterSeconds.toString());
         res.status(429).json({
           error: this.message,
@@ -83,7 +83,7 @@ export const loginLimiterInstance = new InMemoryRateLimiter({
   message: 'Too many login attempts. Please try again in 15 minutes.',
 });
 export const loginRateLimiter = loginLimiterInstance.middleware(
-  (req) => `login:${req.body?.email ? String(req.body.email).toLowerCase().trim() : ''}:${req.ip}`
+  (req, ip) => `login:${req.body?.email ? String(req.body.email).toLowerCase().trim() : ''}:${ip}`
 );
 
 // 2. Registration rate limit: 10 accounts per hour per IP
@@ -101,7 +101,7 @@ export const resendVerificationLimiterInstance = new InMemoryRateLimiter({
   message: 'Too many verification email requests. Please wait a few minutes before trying again.',
 });
 export const resendVerificationRateLimiter = resendVerificationLimiterInstance.middleware(
-  (req) => `resend:${req.body?.email ? String(req.body.email).toLowerCase().trim() : ''}:${req.ip}`
+  (req, ip) => `resend:${req.body?.email ? String(req.body.email).toLowerCase().trim() : ''}:${ip}`
 );
 
 // 4. Forgot password rate limit: 5 requests per hour per email
@@ -111,7 +111,7 @@ export const forgotPasswordLimiterInstance = new InMemoryRateLimiter({
   message: 'Too many password reset requests. Please check your inbox or wait before trying again.',
 });
 export const forgotPasswordRateLimiter = forgotPasswordLimiterInstance.middleware(
-  (req) => `forgot:${req.body?.email ? String(req.body.email).toLowerCase().trim() : ''}:${req.ip}`
+  (req, ip) => `forgot:${req.body?.email ? String(req.body.email).toLowerCase().trim() : ''}:${ip}`
 );
 
 // 5. Reset password rate limit: 10 attempts per 15 minutes
@@ -129,3 +129,11 @@ export const verifyEmailLimiterInstance = new InMemoryRateLimiter({
   message: 'Too many email verification attempts. Please try again later.',
 });
 export const verifyEmailRateLimiter = verifyEmailLimiterInstance.middleware();
+
+// 7. Refresh session rate limit: 30 requests per minute per IP
+export const refreshLimiterInstance = new InMemoryRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  message: 'Too many session refresh attempts. Please try again shortly.',
+});
+export const refreshRateLimiter = refreshLimiterInstance.middleware();
