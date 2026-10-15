@@ -1,28 +1,76 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { User } from '../services/authApi';
+import { refreshToken as apiRefreshToken, logout as apiLogout } from '../services/authApi';
 
 interface AuthState {
   user: User | null;
   token: string | null;
+  isInitializing: boolean;
   setAuth: (user: User, token: string) => void;
-  logout: () => void;
+  clearAuth: () => void;
+  logout: () => Promise<void>;
+  initializeAuth: () => Promise<void>;
+  refreshSession: () => Promise<string | null>;
   isAuthenticated: () => boolean;
   isAdmin: () => boolean;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      token: null,
-      setAuth: (user, token) => set({ user, token }),
-      logout: () => set({ user: null, token: null }),
-      isAuthenticated: () => !!get().token,
-      isAdmin: () => get().user?.role === 'ADMIN',
-    }),
-    {
-      name: 'auth-storage',
+// Ensure any stale legacy tokens in localStorage are cleaned up immediately
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem('auth-storage');
+    localStorage.removeItem('token');
+  } catch {
+    // Ignore storage errors in restricted contexts
+  }
+}
+
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: null,
+  token: null,
+  isInitializing: true,
+
+  setAuth: (user, token) => set({ user, token, isInitializing: false }),
+
+  clearAuth: () => set({ user: null, token: null, isInitializing: false }),
+
+  logout: async () => {
+    try {
+      await apiLogout();
+    } catch (err) {
+      console.warn('Backend logout warning:', err);
+    } finally {
+      get().clearAuth();
     }
-  )
-);
+  },
+
+  initializeAuth: async () => {
+    try {
+      const res = await apiRefreshToken();
+      if (res.token && res.user) {
+        set({ user: res.user, token: res.token, isInitializing: false });
+        return;
+      }
+    } catch {
+      // No active or valid refresh cookie, user is a guest
+    }
+    set({ user: null, token: null, isInitializing: false });
+  },
+
+  refreshSession: async () => {
+    try {
+      const res = await apiRefreshToken();
+      if (res.token && res.user) {
+        set({ user: res.user, token: res.token, isInitializing: false });
+        return res.token;
+      }
+    } catch (err) {
+      console.warn('Session refresh failed:', err);
+      get().clearAuth();
+    }
+    return null;
+  },
+
+  isAuthenticated: () => !!get().token,
+  isAdmin: () => get().user?.role === 'ADMIN',
+}));

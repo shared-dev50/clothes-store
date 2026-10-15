@@ -21,7 +21,7 @@ export interface CreateOrderPayload {
 }
 
 const getAuthHeaders = (): Record<string, string> => {
-  const token = useAuthStore.getState().token || localStorage.getItem('token');
+  const token = useAuthStore.getState().token;
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 

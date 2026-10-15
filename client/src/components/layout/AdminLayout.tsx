@@ -3,7 +3,17 @@ import { Navigate, Outlet, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 
 export const AdminLayout: React.FC = () => {
-  const { isAuthenticated, isAdmin, logout } = useAuthStore();
+  const { isAuthenticated, isAdmin, logout, isInitializing } = useAuthStore();
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-brand-stone/10">
+        <div className="text-sm font-semibold uppercase tracking-widest text-brand-taupe animate-pulse">
+          Loading Admin Session...
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated() || !isAdmin()) {
     return <Navigate to="/login" replace />;
@@ -30,7 +40,7 @@ export const AdminLayout: React.FC = () => {
             Storefront
           </Link>
           <button 
-            onClick={logout}
+            onClick={() => logout()}
             className="text-sm uppercase tracking-wide bg-brand-white text-brand-black px-4 py-2 hover:bg-brand-stone transition-colors"
           >
             Logout

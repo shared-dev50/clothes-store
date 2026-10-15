@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const categoryRoutes_1 = __importDefault(require("./routes/categoryRoutes"));
 const productRoutes_1 = __importDefault(require("./routes/productRoutes"));
@@ -63,6 +64,7 @@ app.use((0, cors_1.default)({
 const paymentRoutes_1 = __importDefault(require("./routes/paymentRoutes"));
 app.use('/api/payments/stripe/webhook', express_1.default.raw({ type: '*/*' }));
 app.use(express_1.default.json());
+app.use((0, cookie_parser_1.default)());
 const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const adminRoutes_1 = __importDefault(require("./routes/adminRoutes"));
 const orderRoutes_1 = __importDefault(require("./routes/orderRoutes"));

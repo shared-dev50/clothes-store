@@ -9,6 +9,9 @@ import { Cart } from './pages/Cart';
 import { Checkout } from './pages/Checkout';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { VerifyEmail } from './pages/VerifyEmail';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminProductForm } from './pages/admin/AdminProductForm';
@@ -16,6 +19,7 @@ import { OrderConfirmation } from './pages/OrderConfirmation';
 import { AdminOrders } from './pages/admin/AdminOrders';
 import { AdminHomepageSettings } from './pages/admin/AdminHomepageSettings';
 import { Toaster } from 'react-hot-toast';
+import { useAuthStore } from './store/authStore';
 
 const queryClient = new QueryClient();
 
@@ -30,6 +34,11 @@ const ScrollToTop = () => {
 };
 
 function App() {
+  // Initialize session restoration once on application mount
+  useEffect(() => {
+    useAuthStore.getState().initializeAuth();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
@@ -45,6 +54,9 @@ function App() {
             <Route path="order-confirmation/:orderNumber" element={<OrderConfirmation />} />
             <Route path="login" element={<Login />} />
             <Route path="register" element={<Register />} />
+            <Route path="verify-email" element={<VerifyEmail />} />
+            <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password" element={<ResetPassword />} />
 
             {/* Fallback routes for mockup */}
             <Route path="collections" element={<div className="py-32 text-center text-2xl uppercase tracking-widest font-display">Collections Coming Soon</div>} />

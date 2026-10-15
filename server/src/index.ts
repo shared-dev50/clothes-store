@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import categoryRoutes from './routes/categoryRoutes';
 import productRoutes from './routes/productRoutes';
@@ -65,6 +66,7 @@ import paymentRoutes from './routes/paymentRoutes';
 app.use('/api/payments/stripe/webhook', express.raw({ type: '*/*' }));
 
 app.use(express.json());
+app.use(cookieParser());
 
 import authRoutes from './routes/authRoutes';
 import adminRoutes from './routes/adminRoutes';
