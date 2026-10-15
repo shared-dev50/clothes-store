@@ -132,8 +132,8 @@ export const ProductDetails: React.FC = () => {
 
       <div className="flex flex-col md:flex-row gap-12 lg:gap-20">
         {/* Image Gallery */}
-        <div className="w-full md:w-1/2 flex flex-col-reverse md:flex-row gap-4 h-fit sticky top-24">
-          <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 lg:w-24 no-scrollbar">
+        <div className="w-full md:w-1/2 flex flex-col-reverse md:flex-row gap-4 md:h-fit md:sticky md:top-24">
+          <div className="w-full md:w-20 lg:w-24 flex md:flex-col gap-4 overflow-x-auto no-scrollbar">
             {product.images.map((img, idx) => (
               <button
                 key={idx}
@@ -144,7 +144,7 @@ export const ProductDetails: React.FC = () => {
               </button>
             ))}
           </div>
-          <div className="flex-1 bg-brand-stone/10 aspect-[3/4] md:aspect-auto md:h-[80vh]">
+          <div className="w-full aspect-[3/4] md:aspect-auto md:h-[80vh] md:flex-1 bg-brand-stone/10 overflow-hidden">
             <img
               src={product.images[activeImageIndex]}
               alt={product.name}
