@@ -375,3 +375,54 @@ export const cancelOrder = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
+/**
+ * Retrieve order history for the authenticated customer
+ */
+export const getCustomerOrders = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.userId) {
+      res.status(401).json({ error: 'Unauthorized: Authentication required to view order history' });
+      return;
+    }
+
+    const orders = await prisma.order.findMany({
+      where: {
+        userId: req.user.userId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        orderNumber: true,
+        createdAt: true,
+        subtotal: true,
+        deliveryFee: true,
+        total: true,
+        status: true,
+        paymentStatus: true,
+        customerName: true,
+        customerEmail: true,
+        customerPhone: true,
+        deliveryAddress: true,
+        county: true,
+        deliveryNotes: true,
+        items: {
+          select: {
+            id: true,
+            productName: true,
+            variantInfo: true,
+            quantity: true,
+            unitPrice: true,
+            totalPrice: true,
+          },
+        },
+      },
+    });
+
+    res.json(orders);
+  } catch (error) {
+    console.error('Error fetching customer orders:', error);
+    res.status(500).json({ error: 'Failed to fetch your orders' });
+  }
+};
+

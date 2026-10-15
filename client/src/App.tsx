@@ -16,6 +16,7 @@ import { AdminLayout } from './components/layout/AdminLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminProductForm } from './pages/admin/AdminProductForm';
 import { OrderConfirmation } from './pages/OrderConfirmation';
+import { MyOrders } from './pages/MyOrders';
 import { AdminOrders } from './pages/admin/AdminOrders';
 import { AdminHomepageSettings } from './pages/admin/AdminHomepageSettings';
 import { Toaster } from 'react-hot-toast';
@@ -52,6 +53,8 @@ function App() {
             <Route path="cart" element={<Cart />} />
             <Route path="checkout" element={<Checkout />} />
             <Route path="order-confirmation/:orderNumber" element={<OrderConfirmation />} />
+            <Route path="orders" element={<MyOrders />} />
+            <Route path="my-orders" element={<MyOrders />} />
             <Route path="login" element={<Login />} />
             <Route path="register" element={<Register />} />
             <Route path="verify-email" element={<VerifyEmail />} />

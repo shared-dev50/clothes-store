@@ -181,3 +181,67 @@ export const cancelOrder = async (orderNumber: string, guestToken?: string) => {
   return response.json();
 };
 
+export interface CustomerOrderItem {
+  id?: string;
+  productName: string;
+  variantInfo?: string | null;
+  quantity: number;
+  unitPrice: number | string;
+  totalPrice: number | string;
+}
+
+export interface CustomerOrder {
+  orderNumber: string;
+  createdAt: string;
+  subtotal: number | string;
+  deliveryFee: number | string;
+  total: number | string;
+  status: 'PENDING_PAYMENT' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+  paymentStatus: 'UNPAID' | 'PAID' | 'FAILED' | 'REFUNDED';
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  deliveryAddress: string;
+  county: string;
+  deliveryNotes?: string | null;
+  items: CustomerOrderItem[];
+}
+
+/**
+ * Retrieve authenticated customer's order history
+ */
+export const getMyOrders = async (): Promise<CustomerOrder[]> => {
+  let token = useAuthStore.getState().token;
+
+  const fetchWithToken = (t: string | null) =>
+    fetch(`${API_URL}/orders/my-orders`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+  let response = await fetchWithToken(token);
+
+  if (response.status === 401) {
+    // Attempt session refresh if token expired
+    const newToken = await useAuthStore.getState().refreshSession();
+    if (newToken) {
+      response = await fetchWithToken(newToken);
+    }
+  }
+
+  if (response.status === 401) {
+    throw new Error('Please log in to view your orders.');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to fetch your orders');
+  }
+
+  return response.json();
+};
+

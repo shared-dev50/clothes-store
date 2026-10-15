@@ -351,6 +351,13 @@ export const Navbar: React.FC = () => {
                       <div className="px-4 py-2 border-b border-brand-stone/60 text-xs text-brand-taupe truncate font-medium">
                         {user?.email}
                       </div>
+                      <Link
+                        to="/orders"
+                        className="block px-4 py-2 hover:bg-brand-stone/20 transition-colors font-medium"
+                        onClick={() => setIsAuthMenuOpen(false)}
+                      >
+                        My Orders
+                      </Link>
                       {user?.role === 'ADMIN' && (
                         <Link
                           to="/admin"
@@ -601,6 +608,13 @@ export const Navbar: React.FC = () => {
               </Link>
               {isAuthenticated() ? (
                 <>
+                  <Link
+                    to="/orders"
+                    onClick={() => setMenuOpen(false)}
+                    className="block text-sm uppercase tracking-wider font-medium text-brand-black"
+                  >
+                    My Orders
+                  </Link>
                   {user?.role === 'ADMIN' && (
                     <Link
                       to="/admin"
