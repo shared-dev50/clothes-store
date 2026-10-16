@@ -10,10 +10,6 @@ export interface SendEmailOptions {
   text?: string;
 }
 
-/**
- * Sends an email using the Resend API if configured, or logs safely in development/test.
- * In production, secret tokens and links are NEVER written to the logs.
- */
 export const sendEmail = async (options: SendEmailOptions): Promise<{ success: boolean; error?: string }> => {
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -21,7 +17,7 @@ export const sendEmail = async (options: SendEmailOptions): Promise<{ success: b
     if (!isProduction) {
       console.log(`[EmailService:Dev] Simulation email sent to ${options.to}: Subject="${options.subject}"`);
       if (process.env.NODE_ENV === 'development') {
-        // Safe hint in local development so developer knows email was triggered
+
         console.log(`[EmailService:Dev] (Set RESEND_API_KEY in .env for real email delivery via Resend)`);
       }
       return { success: true };

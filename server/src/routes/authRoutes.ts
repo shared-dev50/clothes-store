@@ -24,7 +24,6 @@ import { Request, Response, NextFunction } from 'express';
 
 const router = Router();
 
-// CSRF Defense-in-depth: Reject cross-site simple navigation submissions targeting cookie-authenticated routes
 const cookieCsrfProtection = (req: Request, res: Response, next: NextFunction): void => {
   if (req.headers['sec-fetch-mode'] === 'navigate') {
     res.status(403).json({ error: 'Cross-site form navigation rejected' });
