@@ -8,6 +8,7 @@ import {
   RefreshCw,
   X,
   ShieldCheck,
+  CreditCard,
 } from 'lucide-react';
 
 export type PaymentDialogState =
@@ -27,8 +28,10 @@ export interface PaymentStatusDialogProps {
   amount?: number;
   phoneNumber?: string;
   errorMessage?: string;
+  paymentMethodLabel?: string;
   onClose: () => void;
   onViewOrder?: () => void;
+  onContinueShopping?: () => void;
   onRetry?: () => void;
   onCheckMyOrders?: () => void;
 }
@@ -41,8 +44,10 @@ export const PaymentStatusDialog: React.FC<PaymentStatusDialogProps> = ({
   amount,
   phoneNumber,
   errorMessage,
+  paymentMethodLabel,
   onClose,
   onViewOrder,
+  onContinueShopping,
   onRetry,
   onCheckMyOrders,
 }) => {
@@ -204,33 +209,76 @@ export const PaymentStatusDialog: React.FC<PaymentStatusDialogProps> = ({
 
         {/* 4. Payment Successful State */}
         {state === 'success' && (
-          <div className="text-center py-3">
-            <div className="w-16 h-16 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xs">
-              <CheckCircle2 size={36} />
+          <div className="text-center py-2">
+            {/* Animated success checkmark consistent with M-Pesa ping effect */}
+            <div className="w-16 h-16 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 relative shadow-xs">
+              <CheckCircle2 size={36} className="text-emerald-600 animate-in zoom-in-75 duration-300" />
+              <span className="absolute -inset-1 rounded-full border border-emerald-400 animate-ping opacity-25" />
             </div>
 
             <span className="inline-block px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold uppercase tracking-widest rounded-full mb-3">
               Payment Confirmed
             </span>
 
-            <h3 id="payment-dialog-title" className="text-2xl font-display uppercase tracking-widest mb-2">
+            <h3 id="payment-dialog-title" className="text-2xl font-display uppercase tracking-widest mb-2 text-brand-black">
               Payment Successful!
             </h3>
 
-            <p className="text-sm text-brand-taupe mb-5 leading-relaxed">
-              We received your payment of{' '}
-              <strong className="text-brand-black">KES {amount ? amount.toLocaleString() : ''}</strong>{' '}
-              for order <strong className="text-brand-black">#{orderNumber}</strong>.
+            <p className="text-sm text-brand-taupe mb-5 leading-relaxed max-w-sm mx-auto">
+              Your order has been confirmed. Thank you for shopping with HBS Wear!
             </p>
 
-            <button
-              ref={primaryButtonRef}
-              type="button"
-              onClick={onViewOrder || onClose}
-              className="w-full py-3.5 bg-brand-black text-brand-white text-xs font-semibold uppercase tracking-widest hover:bg-brand-black/90 transition-colors flex items-center justify-center gap-2 shadow-xs"
-            >
-              View Order Confirmation <ArrowRight size={14} />
-            </button>
+            {/* Confirmed Order Summary Box */}
+            <div className="bg-brand-stone/10 border border-brand-stone/30 p-4 text-left rounded-xs mb-6 text-xs text-brand-black space-y-2.5">
+              {orderNumber && (
+                <div className="flex justify-between items-center">
+                  <span className="text-brand-taupe uppercase tracking-wider font-medium">Order Number:</span>
+                  <span className="font-semibold text-brand-black font-mono">#{orderNumber}</span>
+                </div>
+              )}
+              {typeof amount === 'number' && amount > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-brand-taupe uppercase tracking-wider font-medium">Amount Paid:</span>
+                  <span className="font-bold text-brand-black">KES {amount.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center">
+                <span className="text-brand-taupe uppercase tracking-wider font-medium">Payment Method:</span>
+                <span className="font-medium text-brand-black flex items-center gap-1.5">
+                  {paymentMethodLabel ? (
+                    <span>{paymentMethodLabel}</span>
+                  ) : provider === 'mpesa' ? (
+                    <>
+                      <Smartphone size={13} className="text-[#4CAF50]" />
+                      <span>M-Pesa</span>
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard size={13} className="text-[#635BFF]" />
+                      <span>Credit / Debit Card (Stripe)</span>
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <button
+                ref={primaryButtonRef}
+                type="button"
+                onClick={onViewOrder || onClose}
+                className="w-full py-3.5 bg-brand-black text-brand-white text-xs font-semibold uppercase tracking-widest hover:bg-brand-black/90 transition-colors flex items-center justify-center gap-2 shadow-xs"
+              >
+                View My Order <ArrowRight size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={onContinueShopping || onClose}
+                className="w-full py-3 bg-brand-white text-brand-black border border-brand-stone text-xs font-semibold uppercase tracking-widest hover:bg-brand-stone/10 transition-colors"
+              >
+                Continue Shopping
+              </button>
+            </div>
           </div>
         )}
 

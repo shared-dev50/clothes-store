@@ -6,11 +6,10 @@ import { useQuery } from '@tanstack/react-query';
 import { getFeaturedProducts, getNewArrivals, getHomepageSettings, getCachedHomepageSettings } from '../services/productApi';
 import { ProductCard } from '../components/product/ProductCard';
 
-// bundled fallback assets
 import heroFallbackImage from '../assets/images/hero.png';
 
 export const Home: React.FC = () => {
-  // 1. Homepage Settings Query (synchronously initialized from cache to prevent hero flash)
+  
   const { data: settings } = useQuery({
     queryKey: ['homepageSettings'],
     queryFn: getHomepageSettings,
@@ -34,13 +33,11 @@ export const Home: React.FC = () => {
   const featuredProducts = featuredData.slice(0, 4);
   const featuredIds = new Set(featuredProducts.map((p) => p.id));
 
-  // Avoid unnecessary duplicates with featured products where practical
   const distinctNewArrivals = newArrivalsData.filter((p) => !featuredIds.has(p.id));
   const newArrivalProducts = (
     distinctNewArrivals.length > 0 ? distinctNewArrivals : newArrivalsData
   ).slice(0, 4);
 
-  // Fallback defaults for content
   const heroHeading = settings?.heroHeading || 'Modern\nHeritage.';
   const heroCaption =
     settings?.heroCaption ||
@@ -60,7 +57,7 @@ export const Home: React.FC = () => {
 
   return (
     <div className="w-full overflow-x-hidden">
-      {/* 1. Full-Viewport Hero Section */}
+      {/* Full-Viewport Hero Section */}
       <section className="relative w-full h-[100svh] min-h-[600px] overflow-hidden flex flex-col justify-end">
         {/* Hero Background Image with responsive cropping and composition */}
         <picture className="absolute inset-0 w-full h-full">
@@ -75,8 +72,6 @@ export const Home: React.FC = () => {
             fetchPriority="high"
           />
         </picture>
-
-        {/* Cinematic Gradient Overlays for optimal contrast on both top navbar and bottom text */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/45 pointer-events-none" />
 
         {/* Hero Content Container */}
@@ -108,7 +103,7 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* 2. Featured Collection Grid */}
+      {/* Featured Collection Grid */}
       <section className="py-20 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="flex justify-between items-end mb-10 md:mb-12">
           <div>
@@ -147,7 +142,6 @@ export const Home: React.FC = () => {
         )}
       </section>
 
-      {/* 3. New Arrivals Section (Directly below Featured, hides if empty) */}
       {(!loadingNewArrivals && newArrivalProducts.length > 0) || loadingNewArrivals ? (
         <section className="py-12 md:py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-brand-stone/50">
           <div className="flex justify-between items-end mb-10 md:mb-12">
@@ -186,7 +180,6 @@ export const Home: React.FC = () => {
         </section>
       ) : null}
 
-      {/* 4. Three Configurable Lifestyle Editorial Cards */}
       {visibleCards.length > 0 && (
         <section className="py-20 md:py-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-brand-stone/50">
           <div className="mb-10 text-center max-w-xl mx-auto">

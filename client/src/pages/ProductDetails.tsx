@@ -40,7 +40,7 @@ export const ProductDetails: React.FC = () => {
         setSelectedSize(availableSize);
       }
     }
-  }, [product]); // Removed selectedColor, selectedSize to prevent resetting loops
+  }, [product]);
 
   // Update current variant when color or size changes
   useEffect(() => {
@@ -179,8 +179,8 @@ export const ProductDetails: React.FC = () => {
                     key={color.name}
                     onClick={() => setSelectedColor(color.name)}
                     className={`w-8 h-8 rounded-full border-2 transition-all ${selectedColor === color.name
-                        ? 'border-brand-black p-0.5 scale-110'
-                        : 'border-transparent hover:border-brand-stone'
+                      ? 'border-brand-black p-0.5 scale-110'
+                      : 'border-transparent hover:border-brand-stone'
                       }`}
                   >
                     <div

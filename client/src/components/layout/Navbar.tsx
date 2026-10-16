@@ -113,7 +113,6 @@ export const Navbar: React.FC = () => {
   const prevPathnameRef = useRef(location.pathname);
   const isScrolled = !isHomePage || scrollPassed;
 
-  // Track scroll position efficiently with passive listener
   useEffect(() => {
     if (!isHomePage) return;
 
@@ -125,7 +124,7 @@ export const Navbar: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [isHomePage]);
 
-  // Close menus on outside click or escape
+  // Close menus on outside click
   const closeAllMenus = useCallback(() => {
     setActiveMegaMenu(null);
     setIsAuthMenuOpen(false);
@@ -190,7 +189,7 @@ export const Navbar: React.FC = () => {
     }
   };
 
-  // Determine navbar styling colors
+  // navbar styling colors
   const isTransparent = isHomePage && !isScrolled && !isMenuOpen && !activeMegaMenu;
 
   const transparentForeground = settings?.navbarTransparentForeground || '#FAFAFA';
@@ -203,22 +202,20 @@ export const Navbar: React.FC = () => {
     <header
       ref={navContainerRef}
       onMouseLeave={handleMouseLeave}
-      className={`fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300 motion-reduce:transition-none ${
-        isTransparent
+      className={`fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300 motion-reduce:transition-none ${isTransparent
           ? 'bg-transparent border-b border-transparent shadow-none'
           : 'bg-brand-white/95 backdrop-blur-md border-b border-brand-stone shadow-sm'
-      }`}
+        }`}
       style={{
         backgroundColor: isTransparent ? 'transparent' : scrolledBackground,
       }}
     >
       {/* Announcement Banner */}
       <div
-        className={`text-xs py-2 text-center font-medium tracking-wide transition-colors duration-300 ${
-          isTransparent
+        className={`text-xs py-2 text-center font-medium tracking-wide transition-colors duration-300 ${isTransparent
             ? 'bg-black/40 text-brand-white/90 backdrop-blur-sm'
             : 'bg-brand-black text-brand-white'
-        }`}
+          }`}
       >
         Free delivery across Nairobi on orders over KES 10,000
       </div>
@@ -255,8 +252,7 @@ export const Navbar: React.FC = () => {
             <NavLink
               to="/shop"
               className={({ isActive }) =>
-                `text-sm font-medium tracking-widest uppercase transition-opacity duration-200 hover:opacity-75 ${
-                  isActive ? 'underline underline-offset-8 font-semibold' : ''
+                `text-sm font-medium tracking-widest uppercase transition-opacity duration-200 hover:opacity-75 ${isActive ? 'underline underline-offset-8 font-semibold' : ''
                 }`
               }
               style={{ color: currentForegroundColor }}
@@ -279,9 +275,8 @@ export const Navbar: React.FC = () => {
                     onClick={() => setActiveMegaMenu(isSelected ? null : key)}
                     aria-expanded={isSelected}
                     aria-haspopup="true"
-                    className={`flex items-center gap-1.5 text-sm font-medium tracking-widest uppercase transition-opacity duration-200 hover:opacity-75 focus:outline-none ${
-                      isSelected ? 'opacity-100 font-semibold' : ''
-                    }`}
+                    className={`flex items-center gap-1.5 text-sm font-medium tracking-widest uppercase transition-opacity duration-200 hover:opacity-75 focus:outline-none ${isSelected ? 'opacity-100 font-semibold' : ''
+                      }`}
                     style={{ color: currentForegroundColor }}
                   >
                     <span>{item.name}</span>

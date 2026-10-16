@@ -123,7 +123,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check email verification status for customers (do not lock out administrators)
+    // Check email verification status for customers 
     if (user.role !== 'ADMIN' && !user.isEmailVerified) {
       res.status(403).json({
         error: 'Please verify your email address before logging in.',
@@ -133,7 +133,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Generate short-lived access token (15 mins)
+    // Generate short-lived access token
     const token = generateAccessToken(user);
 
     // Generate rotating refresh token (7 days)
@@ -196,7 +196,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     // Refresh Token Reuse Detection & Concurrency Grace Period
     if (tokenRecord.revokedAt !== null) {
       const elapsedSinceRevocation = Date.now() - tokenRecord.revokedAt.getTime();
-      const ROTATION_GRACE_PERIOD_MS = 15 * 1000; // 15-second grace window for in-flight concurrent requests
+      const ROTATION_GRACE_PERIOD_MS = 15 * 1000;
 
       // If the token was revoked within the grace window and was replaced by an active successor token
       if (elapsedSinceRevocation <= ROTATION_GRACE_PERIOD_MS && tokenRecord.replacedByTokenHash) {

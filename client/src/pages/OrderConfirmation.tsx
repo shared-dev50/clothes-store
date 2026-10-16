@@ -32,6 +32,7 @@ interface CheckoutFormProps {
   customerEmail: string;
   onPaymentSuccess: () => void;
   onPaymentFailure: (err: string) => void;
+  onPaymentPending: () => void;
 }
 
 const CheckoutForm: React.FC<CheckoutFormProps> = ({
@@ -41,6 +42,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   customerEmail,
   onPaymentSuccess,
   onPaymentFailure,
+  onPaymentPending,
 }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -73,20 +75,36 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
         onPaymentFailure(result.error.message || 'Payment failed');
         setProcessing(false);
       } else if (result.paymentIntent?.status === 'succeeded' || result.paymentIntent?.status === 'processing') {
-        // Poll backend to confirm webhook persisted the paid state
-        for (let i = 0; i < 5; i++) {
+
+        let backendConfirmed = false;
+        let backendFailed = false;
+        let failureMsg = '';
+
+        for (let i = 0; i < 12; i++) {
           try {
             const statusData = await getPaymentStatus(orderNumber);
-            if (statusData.paymentStatus === 'PAID') {
+            if (statusData.paymentStatus === 'PAID' || statusData.orderStatus === 'PROCESSING') {
+              backendConfirmed = true;
+              break;
+            } else if (statusData.latestPayment?.status === 'FAILED') {
+              backendFailed = true;
+              failureMsg = statusData.latestPayment.failureReason || 'Card payment was declined.';
               break;
             }
           } catch {
-            // ignore interim polling error
+
           }
-          await new Promise((res) => setTimeout(res, 1200));
+          await new Promise((res) => setTimeout(res, 1500));
         }
 
-        onPaymentSuccess();
+        if (backendConfirmed) {
+          onPaymentSuccess();
+        } else if (backendFailed) {
+          setError(failureMsg);
+          onPaymentFailure(failureMsg);
+        } else {
+          onPaymentPending();
+        }
       } else {
         const msg = `Unexpected payment status: ${result.paymentIntent?.status}`;
         setError(msg);
@@ -197,7 +215,7 @@ export const OrderConfirmation: React.FC = () => {
       if (urlToken && typeof sessionStorage !== 'undefined') {
         try {
           sessionStorage.setItem(`guest_token_${orderNumber}`, urlToken);
-        } catch {}
+        } catch { }
       }
 
       const data = await getOrder(orderNumber, urlToken || undefined, emailOverride);
@@ -246,7 +264,7 @@ export const OrderConfirmation: React.FC = () => {
     if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
 
     let pollCount = 0;
-    const maxPolls = 24; // 24 polls * 3s = 72s bounded polling
+    const maxPolls = 24;
 
     mpesaPollingRef.current = setInterval(async () => {
       pollCount++;
@@ -423,9 +441,9 @@ export const OrderConfirmation: React.FC = () => {
   if (error || !order) {
     const isVerificationNeeded = Boolean(
       error &&
-        (error.toLowerCase().includes('access denied') ||
-          error.toLowerCase().includes('email is required') ||
-          error.toLowerCase().includes('forbidden'))
+      (error.toLowerCase().includes('access denied') ||
+        error.toLowerCase().includes('email is required') ||
+        error.toLowerCase().includes('forbidden'))
     );
 
     return (
@@ -533,7 +551,7 @@ export const OrderConfirmation: React.FC = () => {
         )}
       </div>
 
-      {/* Payment Options Section (when unpaid and not cancelled) */}
+      {/* Payment Options Section*/}
       {!isPaid && !isCancelled && (
         <div className="w-full max-w-2xl mb-8 space-y-6">
           <div className="bg-brand-stone/10 p-6 md:p-8 text-left border border-brand-stone/30">
@@ -628,6 +646,11 @@ export const OrderConfirmation: React.FC = () => {
                             setDialogProvider('stripe');
                             setDialogErrorMessage(msg);
                             setDialogState('failed');
+                            setIsDialogOpen(true);
+                          }}
+                          onPaymentPending={() => {
+                            setDialogProvider('stripe');
+                            setDialogState('unknown_outcome');
                             setIsDialogOpen(true);
                           }}
                         />
@@ -735,7 +758,7 @@ export const OrderConfirmation: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Navigation & Utility Actions */}
+      {/* Bottom Navigation */}
       <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-2xl justify-center">
         <button
           type="button"
@@ -780,6 +803,10 @@ export const OrderConfirmation: React.FC = () => {
         onViewOrder={() => {
           setIsDialogOpen(false);
           fetchOrder();
+        }}
+        onContinueShopping={() => {
+          setIsDialogOpen(false);
+          navigate('/shop');
         }}
         onRetry={() => {
           setIsDialogOpen(false);

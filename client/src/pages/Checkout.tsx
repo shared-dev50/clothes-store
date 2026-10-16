@@ -24,7 +24,10 @@ interface StripeCardSectionProps {
   total: number;
   activeOrder: any;
   setActiveOrder: (order: any) => void;
-  onSuccess: (orderNumber: string) => void;
+  onSuccess: (orderNumber: string, amount: number) => void;
+  onProcessing: (orderNumber: string) => void;
+  onFailure: (errorMessage: string) => void;
+  onPending: (orderNumber: string) => void;
   isProcessing: boolean;
   setIsProcessing: (val: boolean) => void;
   onReturnToInfo: () => void;
@@ -37,6 +40,9 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
   activeOrder,
   setActiveOrder,
   onSuccess,
+  onProcessing,
+  onFailure,
+  onPending,
   isProcessing,
   setIsProcessing,
   onReturnToInfo
@@ -49,8 +55,10 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
 
   const handleCardPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!stripe || !elements) {
-      toast.error('Payment system is initializing. Please wait a moment.');
+    if (!stripe || !elements || isProcessing) {
+      if (!stripe || !elements) {
+        toast.error('Payment system is initializing. Please wait a moment.');
+      }
       return;
     }
 
@@ -90,6 +98,8 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
         });
       }
 
+      onProcessing(order.orderNumber);
+
       // Initialize Stripe payment on backend
       const { clientSecret } = await createStripePayment(order.orderNumber);
 
@@ -116,36 +126,55 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
       });
 
       if (result.error) {
-        setCardError(result.error.message || 'Payment failed');
-        toast.error(result.error.message || 'Payment failed');
+        const errMsg = result.error.message || 'Payment failed';
+        setCardError(errMsg);
+        onFailure(errMsg);
         setIsProcessing(false);
         return;
       }
 
       if (result.paymentIntent?.status === 'succeeded' || result.paymentIntent?.status === 'processing') {
-        // Poll backend to confirm webhook persisted the paid status
-        for (let i = 0; i < 5; i++) {
+        let backendConfirmed = false;
+        let backendFailed = false;
+        let failReason = '';
+
+        for (let i = 0; i < 12; i++) {
           try {
             const statusData = await getPaymentStatus(order.orderNumber);
-            if (statusData.paymentStatus === 'PAID') {
+            if (statusData.paymentStatus === 'PAID' || statusData.orderStatus === 'PROCESSING') {
+              backendConfirmed = true;
+              break;
+            } else if (statusData.latestPayment?.status === 'FAILED') {
+              backendFailed = true;
+              failReason = statusData.latestPayment.failureReason || 'Card payment was declined.';
               break;
             }
           } catch {
-            // ignore interim polling error
           }
-          await new Promise(res => setTimeout(res, 1200));
+          await new Promise(res => setTimeout(res, 1500));
         }
 
-        onSuccess(order.orderNumber);
+        const finalAmount = order.total ? Number(order.total) : total;
+
+        if (backendConfirmed) {
+          onSuccess(order.orderNumber, finalAmount);
+        } else if (backendFailed) {
+          onFailure(failReason);
+        } else {
+          // Webhook delayed; do not show false success or false failure
+          onPending(order.orderNumber);
+        }
       } else {
-        toast.error(`Payment status: ${result.paymentIntent?.status || 'Unknown'}`);
-        setIsProcessing(false);
+        const msg = `Payment status: ${result.paymentIntent?.status || 'Unknown'}`;
+        setCardError(msg);
+        onFailure(msg);
       }
     } catch (err: any) {
       console.error('Card payment error:', err);
       const msg = err.message || 'Failed to complete payment';
       setCardError(msg);
-      toast.error(msg);
+      onFailure(msg);
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -233,6 +262,7 @@ const StripeCardSection: React.FC<StripeCardSectionProps> = ({
 export const Checkout: React.FC = () => {
   const { cart, clearCart, pendingOrder, setPendingOrder, clearPendingOrder } = useCartStore();
   const subtotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
+  const total = subtotal;
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
@@ -242,6 +272,18 @@ export const Checkout: React.FC = () => {
   const [isVerifyingOrder, setIsVerifyingOrder] = useState(false);
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [cartMismatchWarning, setCartMismatchWarning] = useState<string | null>(null);
+
+  // Confirmed order details preserved after cart clearing
+  const [confirmedOrder, setConfirmedOrder] = useState<{
+    orderNumber: string;
+    total: number;
+    paymentMethod: 'mpesa' | 'stripe';
+    phone?: string;
+    items?: any[];
+  } | null>(null);
+
+  const itemsToDisplay = cart.length > 0 ? cart : (confirmedOrder?.items || []);
+  const totalToDisplay = cart.length > 0 ? total : (confirmedOrder?.total ?? 0);
 
   const [formData, setFormData] = useState({
     email: user?.email || '',
@@ -371,8 +413,6 @@ export const Checkout: React.FC = () => {
     };
   }, []);
 
-  const total = subtotal;
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -400,11 +440,11 @@ export const Checkout: React.FC = () => {
     setStep(1);
   };
 
-  const startMpesaPolling = (orderNum: string) => {
+  const startMpesaPolling = (orderNum: string, orderTotal: number) => {
     if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
 
     let pollCount = 0;
-    const maxPolls = 24; // 24 polls * 3s = 72s bounded polling
+    const maxPolls = 24;
 
     mpesaPollingRef.current = setInterval(async () => {
       pollCount++;
@@ -412,26 +452,41 @@ export const Checkout: React.FC = () => {
         const statusData = await getPaymentStatus(orderNum);
         if (statusData.paymentStatus === 'PAID' || statusData.orderStatus === 'PROCESSING') {
           if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
+          setConfirmedOrder({
+            orderNumber: orderNum,
+            total: orderTotal,
+            paymentMethod: 'mpesa',
+            phone: mpesaPhone || formData.phone,
+            items: [...cart],
+          });
+          setDialogProvider('mpesa');
+          setDialogOrderNumber(orderNum);
+          setDialogState('success');
+          setIsDialogOpen(true);
+          setIsProcessing(false);
           clearCart();
           clearPendingOrder();
-          setDialogState('success');
-          setIsProcessing(false);
         } else if (statusData.latestPayment?.status === 'FAILED') {
           if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
           setDialogErrorMessage(
             statusData.latestPayment.failureReason || 'M-Pesa payment prompt was cancelled or declined on your phone.'
           );
+          setDialogProvider('mpesa');
           setDialogState('failed');
           setIsProcessing(false);
         } else if (pollCount >= maxPolls) {
           if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
-          // Safaricom callback may be delayed; do not mark as failure
+
+          setDialogProvider('mpesa');
+          setDialogOrderNumber(orderNum);
           setDialogState('unknown_outcome');
           setIsProcessing(false);
         }
       } catch {
         if (pollCount >= maxPolls) {
           if (mpesaPollingRef.current) clearInterval(mpesaPollingRef.current);
+          setDialogProvider('mpesa');
+          setDialogOrderNumber(orderNum);
           setDialogState('unknown_outcome');
           setIsProcessing(false);
         }
@@ -440,7 +495,7 @@ export const Checkout: React.FC = () => {
   };
 
   const handleMpesaOrder = async () => {
-    if (isProcessing) return; // Prevent duplicate clicks
+    if (isProcessing) return;
 
     if (!formData.email || !formData.firstName || !formData.phone) {
       toast.error('Please complete all contact and delivery fields.');
@@ -478,14 +533,16 @@ export const Checkout: React.FC = () => {
         itemsSnapshot: cart.map(item => ({ variantId: item.variantId, quantity: item.quantity }))
       });
 
+      const orderTotal = order.total ? Number(order.total) : (total || totalToDisplay);
+
       try {
         await initiateMpesa(order.orderNumber, phoneToUse);
         setDialogState('waiting_mpesa');
-        startMpesaPolling(order.orderNumber);
+        startMpesaPolling(order.orderNumber, orderTotal);
       } catch (mpesaErr: any) {
         if (mpesaErr.message && mpesaErr.message.toLowerCase().includes('already sent')) {
           setDialogState('waiting_mpesa');
-          startMpesaPolling(order.orderNumber);
+          startMpesaPolling(order.orderNumber, orderTotal);
         } else {
           throw mpesaErr;
         }
@@ -498,16 +555,23 @@ export const Checkout: React.FC = () => {
     }
   };
 
-  const handleCardSuccess = (orderNumber: string) => {
-    clearCart();
-    clearPendingOrder();
+  const handleCardSuccess = (orderNumber: string, finalAmount: number) => {
+    setConfirmedOrder({
+      orderNumber,
+      total: finalAmount,
+      paymentMethod: 'stripe',
+      items: [...cart],
+    });
     setDialogProvider('stripe');
     setDialogOrderNumber(orderNumber);
     setDialogState('success');
     setIsDialogOpen(true);
+    setIsProcessing(false);
+    clearCart();
+    clearPendingOrder();
   };
 
-  if (cart.length === 0) {
+  if (cart.length === 0 && !confirmedOrder && dialogState !== 'success' && !isDialogOpen && !activeOrder && !pendingOrder?.orderNumber) {
     navigate('/cart');
     return null;
   }
@@ -516,9 +580,8 @@ export const Checkout: React.FC = () => {
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
       <div className="flex flex-col-reverse lg:flex-row gap-12 lg:gap-20">
 
-        {/* Left Form Area */}
         <div className="w-full lg:w-3/5">
-          {/* Recovery and Mismatch Notices */}
+
           {isVerifyingOrder && (
             <div className="mb-6 p-3 bg-stone-100 border border-brand-stone/40 rounded text-brand-taupe text-xs flex items-center gap-2 animate-in fade-in">
               <div className="w-3.5 h-3.5 border-2 border-brand-black border-t-transparent rounded-full animate-spin shrink-0" />
@@ -680,7 +743,25 @@ export const Checkout: React.FC = () => {
                             total={total}
                             activeOrder={activeOrder}
                             setActiveOrder={setActiveOrder}
+                            onProcessing={(orderNumber) => {
+                              setDialogProvider('stripe');
+                              setDialogOrderNumber(orderNumber);
+                              setDialogState('processing');
+                              setIsDialogOpen(true);
+                            }}
                             onSuccess={handleCardSuccess}
+                            onFailure={(errMsg) => {
+                              setDialogProvider('stripe');
+                              setDialogErrorMessage(errMsg);
+                              setDialogState('failed');
+                              setIsDialogOpen(true);
+                            }}
+                            onPending={(orderNumber) => {
+                              setDialogProvider('stripe');
+                              setDialogOrderNumber(orderNumber);
+                              setDialogState('unknown_outcome');
+                              setIsDialogOpen(true);
+                            }}
                             isProcessing={isProcessing}
                             setIsProcessing={setIsProcessing}
                             onReturnToInfo={() => setStep(1)}
@@ -762,7 +843,7 @@ export const Checkout: React.FC = () => {
                               Processing...
                             </>
                           ) : (
-                            `Pay with M-Pesa (KES ${total.toLocaleString()})`
+                            `Pay with M-Pesa (KES ${(total || totalToDisplay).toLocaleString()})`
                           )}
                         </button>
                       </div>
@@ -782,7 +863,7 @@ export const Checkout: React.FC = () => {
             <h2 className="hidden lg:block text-lg font-display uppercase tracking-widest mb-6 border-b border-brand-stone/30 pb-4">Order Summary</h2>
 
             <div className="max-h-[40vh] overflow-y-auto no-scrollbar mb-6 space-y-4 pr-2 border-b border-brand-stone/30 pb-6">
-              {cart.map(item => (
+              {itemsToDisplay.map((item: any) => (
                 <div key={item.id} className="flex gap-4 items-center">
                   <div className="w-16 h-20 bg-brand-stone/20 flex-shrink-0">
                     <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
@@ -804,13 +885,13 @@ export const Checkout: React.FC = () => {
             <div className="space-y-3 text-sm mb-6 border-b border-brand-stone/30 pb-6">
               <div className="flex justify-between">
                 <span className="text-brand-taupe">Subtotal</span>
-                <span>KES {subtotal.toLocaleString()}</span>
+                <span>KES {(cart.length > 0 ? subtotal : (confirmedOrder?.total ?? totalToDisplay)).toLocaleString()}</span>
               </div>
             </div>
 
             <div className="flex justify-between items-center">
               <span className="font-semibold uppercase tracking-widest">Total</span>
-              <span className="text-2xl font-bold">KES {total.toLocaleString()}</span>
+              <span className="text-2xl font-bold">KES {(cart.length > 0 ? total : (confirmedOrder?.total ?? totalToDisplay)).toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -820,19 +901,29 @@ export const Checkout: React.FC = () => {
         isOpen={isDialogOpen}
         state={dialogState}
         provider={dialogProvider}
-        orderNumber={dialogOrderNumber || activeOrder?.orderNumber || pendingOrder?.orderNumber}
-        amount={total}
-        phoneNumber={mpesaPhone || formData.phone}
+        orderNumber={confirmedOrder?.orderNumber || dialogOrderNumber || activeOrder?.orderNumber || pendingOrder?.orderNumber}
+        amount={confirmedOrder?.total ?? (activeOrder?.total ? Number(activeOrder.total) : totalToDisplay)}
+        phoneNumber={confirmedOrder?.phone || mpesaPhone || formData.phone}
         errorMessage={dialogErrorMessage}
         onClose={() => {
           setIsDialogOpen(false);
           if (dialogState === 'success') {
-            navigate(`/order-confirmation/${dialogOrderNumber || activeOrder?.orderNumber}`);
+            const targetOrder = confirmedOrder?.orderNumber || dialogOrderNumber || activeOrder?.orderNumber;
+            if (targetOrder) {
+              navigate(`/order-confirmation/${targetOrder}`);
+            }
           }
         }}
         onViewOrder={() => {
           setIsDialogOpen(false);
-          navigate(`/order-confirmation/${dialogOrderNumber || activeOrder?.orderNumber}`);
+          const targetOrder = confirmedOrder?.orderNumber || dialogOrderNumber || activeOrder?.orderNumber;
+          if (targetOrder) {
+            navigate(`/order-confirmation/${targetOrder}`);
+          }
+        }}
+        onContinueShopping={() => {
+          setIsDialogOpen(false);
+          navigate('/shop');
         }}
         onRetry={() => {
           setIsDialogOpen(false);

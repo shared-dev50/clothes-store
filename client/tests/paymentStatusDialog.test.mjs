@@ -27,12 +27,18 @@ test('PaymentStatusDialog component state and accessibility definitions', () => 
   assert.match(dialogContent, /Wait in Background \(Keep Reserved\)/);
   assert.match(dialogContent, /Closing this dialog will not cancel your order or payment/);
 
-  // 3. Payment success: shows confirmation, order number and action to view confirmation
+  // 3. Payment success: shows animated checkmark, confirmation, order number, amount, payment method, View My Order, and Continue Shopping
   assert.match(dialogContent, /Payment Confirmed/);
   assert.match(dialogContent, /Payment Successful!/);
-  assert.match(dialogContent, /View Order Confirmation/);
+  assert.match(dialogContent, /Your order has been confirmed\. Thank you for shopping with HBS Wear!/);
+  assert.match(dialogContent, /Order Number:/);
+  assert.match(dialogContent, /Amount Paid:/);
+  assert.match(dialogContent, /Payment Method:/);
+  assert.match(dialogContent, /View My Order/);
+  assert.match(dialogContent, /Continue Shopping/);
+  assert.match(dialogContent, /animate-ping/);
 
-  // 4. Payment failed or cancelled: displays friendly message and retry
+  // 4. Payment failed or cancelled: displays friendly message, Retry and Change Payment Method
   assert.match(dialogContent, /Payment Failed/);
   assert.match(dialogContent, /Retry Payment/);
   assert.match(dialogContent, /Change Payment Method/);
@@ -50,7 +56,7 @@ test('PaymentStatusDialog component state and accessibility definitions', () => 
   assert.match(dialogContent, /e\.key === 'Escape'/);
 });
 
-test('Checkout payment state handling and duplicate submission protection', () => {
+test('Checkout payment state handling, duplicate submission protection, and safe cart clearing', () => {
   const checkoutPath = path.resolve(process.cwd(), 'src/pages/Checkout.tsx');
   const checkoutContent = fs.readFileSync(checkoutPath, 'utf8');
 
@@ -60,16 +66,32 @@ test('Checkout payment state handling and duplicate submission protection', () =
   // Duplicate click protection: isProcessing guard
   assert.match(checkoutContent, /if \(isProcessing\) return;/);
 
-  // Success is NOT shown upon STK Push initiation:
-  // Instead, initiateMpesa transitions to waiting_mpesa and starts bounded polling
+  // M-Pesa: initiateMpesa transitions to waiting_mpesa and starts bounded polling
   assert.match(checkoutContent, /await initiateMpesa/);
   assert.match(checkoutContent, /setDialogState\('waiting_mpesa'\)/);
   assert.match(checkoutContent, /startMpesaPolling/);
 
-  // Bounded polling stops on terminal states (PAID / FAILED) or maxPolls
+  // Stripe: StripeCardSection triggers processing and polls backend before confirming
+  assert.match(checkoutContent, /onProcessing/);
+  assert.match(checkoutContent, /setDialogProvider\('stripe'\)/);
   assert.match(checkoutContent, /statusData\.paymentStatus === 'PAID'/);
+
+  // Bounded polling stops on terminal states (PAID / FAILED) or maxPolls
   assert.match(checkoutContent, /statusData\.latestPayment\?\.status === 'FAILED'/);
   assert.match(checkoutContent, /setDialogState\('unknown_outcome'\)/);
+
+  // Customer is NOT redirected to empty cart immediately after success:
+  // Cart empty redirect is guarded against active success state and confirmedOrder
+  assert.match(checkoutContent, /cart\.length === 0 && !confirmedOrder && dialogState !== 'success'/);
+
+  // Order number and amount remain available via confirmedOrder even after cart is cleared
+  assert.match(checkoutContent, /setConfirmedOrder/);
+  assert.match(checkoutContent, /confirmedOrder\?\.orderNumber/);
+  assert.match(checkoutContent, /confirmedOrder\?\.total/);
+
+  // Clear cart only after backend confirms PAID
+  assert.match(checkoutContent, /clearCart\(\)/);
+  assert.match(checkoutContent, /clearPendingOrder\(\)/);
 });
 
 test('OrderConfirmation page reflects pending and completed states accurately', () => {

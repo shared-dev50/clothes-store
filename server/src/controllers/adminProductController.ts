@@ -226,8 +226,6 @@ export const updateProduct = async (req: Request, res: Response) => {
       for (const v of variantsToDelete) {
         const orderItems = await tx.orderItem.findFirst({ where: { variantId: v.id } });
         if (orderItems) {
-          // Cannot delete because it's referenced by order items.
-          // Archive it instead.
           await tx.productVariant.update({
             where: { id: v.id },
             data: { isArchived: true }

@@ -375,7 +375,7 @@ export const AdminHomepageSettings: React.FC = () => {
                 />
               </div>
 
-              {/* Secondary CTA */}
+              {/* Secondary*/}
               <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-brand-black">
                   Secondary CTA Label (Optional)

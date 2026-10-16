@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  fetchAdminCategories, 
-  fetchAdminProductById, 
-  createAdminProduct, 
+import {
+  fetchAdminCategories,
+  fetchAdminProductById,
+  createAdminProduct,
   updateAdminProduct,
   getCloudinaryConfig,
   generateCloudinarySignature
@@ -69,19 +69,19 @@ export const AdminProductForm: React.FC = () => {
         featured: initialProduct.featured || false,
         newArrival: initialProduct.newArrival || false,
         details: initialProduct.details?.length ? initialProduct.details : [''],
-        images: initialProduct.images?.length 
-          ? initialProduct.images.map((img: any) => img.imageUrl) 
+        images: initialProduct.images?.length
+          ? initialProduct.images.map((img: any) => img.imageUrl)
           : [''],
-        variants: initialProduct.variants?.length 
+        variants: initialProduct.variants?.length
           ? initialProduct.variants.map((v: any) => ({
-              id: v.id,
-              color: v.color || '',
-              colorHex: v.colorHex || '',
-              size: v.size || '',
-              stock: v.stock || 0,
-              sku: v.sku || '',
-              isArchived: v.isArchived || false
-            }))
+            id: v.id,
+            color: v.color || '',
+            colorHex: v.colorHex || '',
+            size: v.size || '',
+            stock: v.stock || 0,
+            sku: v.sku || '',
+            isArchived: v.isArchived || false
+          }))
           : [{ id: undefined, color: '', colorHex: '', size: '', stock: 0, sku: '', isArchived: false }]
       });
     }
@@ -97,7 +97,7 @@ export const AdminProductForm: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Clean up empty arrays
     const cleanData = {
       ...formData,
@@ -105,7 +105,7 @@ export const AdminProductForm: React.FC = () => {
       images: formData.images.filter(i => i.trim() !== ''),
       variants: formData.variants.filter(v => v.color.trim() !== '' || v.size.trim() !== '')
     };
-    
+
     mutation.mutate(cleanData);
   };
 
@@ -129,9 +129,9 @@ export const AdminProductForm: React.FC = () => {
     try {
       setUploadError(null);
       setUploading(true);
-      
+
       const config = await getCloudinaryConfig();
-      
+
       const widget = (window as any).cloudinary.createUploadWidget(
         {
           cloudName: config.cloudName,
@@ -139,7 +139,7 @@ export const AdminProductForm: React.FC = () => {
           uploadSignature: generateCloudinarySignature,
           folder: config.folder,
           cropping: true,
-          croppingAspectRatio: 1, // Square 1:1 crop
+          croppingAspectRatio: 1,
           showSkipCropButton: false,
           multiple: true,
           defaultSource: 'local',
@@ -149,12 +149,12 @@ export const AdminProductForm: React.FC = () => {
         (error: any, result: any) => {
           if (!error && result && result.event === "success") {
             let secureUrl = result.info.secure_url;
-            
+
             // Add automatic format and quality optimization if it's a Cloudinary URL
             if (secureUrl.includes('/upload/')) {
               secureUrl = secureUrl.replace('/upload/', '/upload/f_auto,q_auto/');
             }
-            
+
             setFormData(prev => {
               const currentImages = prev.images.filter(i => i.trim() !== '');
               return { ...prev, images: [...currentImages, secureUrl] };
@@ -162,13 +162,13 @@ export const AdminProductForm: React.FC = () => {
           } else if (error) {
             setUploadError(error.message || 'Failed to upload image');
           }
-          
+
           if (result && (result.event === "close" || result.event === "abort")) {
             setUploading(false);
           }
         }
       );
-      
+
       widget.open();
     } catch (err: any) {
       setUploading(false);
@@ -185,9 +185,9 @@ export const AdminProductForm: React.FC = () => {
   };
 
   const addVariant = () => {
-    setFormData({ 
-      ...formData, 
-      variants: [...formData.variants, { id: undefined, color: '', colorHex: '', size: '', stock: 0, sku: '', isArchived: false }] 
+    setFormData({
+      ...formData,
+      variants: [...formData.variants, { id: undefined, color: '', colorHex: '', size: '', stock: 0, sku: '', isArchived: false }]
     });
   };
 
@@ -213,35 +213,35 @@ export const AdminProductForm: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8 bg-brand-white p-6 shadow-sm border border-brand-stone">
-        
+
         {/* Basic Info */}
         <div className="space-y-4">
           <h2 className="text-lg font-semibold uppercase tracking-wide border-b border-brand-stone pb-2">Basic Info</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-brand-taupe mb-1">Product Name *</label>
-              <input 
+              <input
                 type="text" required
-                value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
+                value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
                 className="w-full border border-brand-stone p-2 focus:outline-none focus:border-brand-black"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-brand-taupe mb-1">Price (KES) *</label>
-              <input 
+              <input
                 type="number" required min="0"
-                value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})}
+                value={formData.price} onChange={e => setFormData({ ...formData, price: Number(e.target.value) })}
                 className="w-full border border-brand-stone p-2 focus:outline-none focus:border-brand-black"
               />
             </div>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-brand-taupe mb-1">Category *</label>
-            <select 
+            <select
               required
-              value={formData.categoryId} 
-              onChange={e => setFormData({...formData, categoryId: e.target.value})}
+              value={formData.categoryId}
+              onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
               className="w-full border border-brand-stone p-2 focus:outline-none focus:border-brand-black"
             >
               <option value="">Select a category</option>
@@ -261,27 +261,27 @@ export const AdminProductForm: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-brand-taupe mb-1">Description</label>
-            <textarea 
+            <textarea
               rows={4}
-              value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
+              value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })}
               className="w-full border border-brand-stone p-2 focus:outline-none focus:border-brand-black"
             />
           </div>
 
           <div className="flex gap-6">
             <label className="flex items-center gap-2 text-sm font-medium">
-              <input 
-                type="checkbox" 
-                checked={formData.featured} 
-                onChange={e => setFormData({...formData, featured: e.target.checked})}
+              <input
+                type="checkbox"
+                checked={formData.featured}
+                onChange={e => setFormData({ ...formData, featured: e.target.checked })}
               />
               Featured Product
             </label>
             <label className="flex items-center gap-2 text-sm font-medium">
-              <input 
-                type="checkbox" 
-                checked={formData.newArrival} 
-                onChange={e => setFormData({...formData, newArrival: e.target.checked})}
+              <input
+                type="checkbox"
+                checked={formData.newArrival}
+                onChange={e => setFormData({ ...formData, newArrival: e.target.checked })}
               />
               New Arrival
             </label>
@@ -293,9 +293,9 @@ export const AdminProductForm: React.FC = () => {
           <h2 className="text-lg font-semibold uppercase tracking-wide border-b border-brand-stone pb-2">Details (Bullet Points)</h2>
           {formData.details.map((detail, index) => (
             <div key={index} className="flex gap-2">
-              <input 
-                type="text" 
-                value={detail} 
+              <input
+                type="text"
+                value={detail}
                 onChange={e => handleArrayChange('details', index, e.target.value)}
                 placeholder="e.g. 100% Cotton"
                 className="flex-1 border border-brand-stone p-2 focus:outline-none focus:border-brand-black"
@@ -315,14 +315,14 @@ export const AdminProductForm: React.FC = () => {
           <div className="flex justify-between items-end border-b border-brand-stone pb-2">
             <h2 className="text-lg font-semibold uppercase tracking-wide">Images</h2>
           </div>
-          
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {formData.images.filter(img => img.trim() !== '').map((img, index) => (
               <div key={index} className="relative group aspect-square border border-brand-stone bg-brand-stone/10">
                 <img src={img} alt={`Product ${index + 1}`} className="w-full h-full object-cover" />
-                <button 
-                  type="button" 
-                  onClick={() => removeArrayItem('images', index)} 
+                <button
+                  type="button"
+                  onClick={() => removeArrayItem('images', index)}
                   className="absolute top-2 right-2 p-1.5 bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-red-600 shadow-md"
                 >
                   <Trash2 size={16} />
@@ -332,7 +332,7 @@ export const AdminProductForm: React.FC = () => {
                 </div>
               </div>
             ))}
-            
+
             <button
               type="button"
               onClick={openCloudinaryWidget}
@@ -363,7 +363,7 @@ export const AdminProductForm: React.FC = () => {
                   <div className="text-xs font-semibold text-red-600 uppercase tracking-wide">Archived Variant</div>
                 )}
                 <div className="flex flex-wrap gap-4 items-start">
-                  
+
                   {/* Color Selection */}
                   <div className="flex-1 min-w-[250px] space-y-3">
                     <label className="block text-xs font-medium text-brand-taupe">Color</label>
@@ -390,7 +390,7 @@ export const AdminProductForm: React.FC = () => {
                           onChange={(e) => {
                             handleVariantChange(index, 'colorHex', e.target.value);
                             if (PREDEFINED_COLORS.some(c => c.name === variant.color)) {
-                                handleVariantChange(index, 'color', '');
+                              handleVariantChange(index, 'color', '');
                             }
                           }}
                           className="w-8 h-8 p-0 border-0 cursor-pointer rounded overflow-hidden hover:scale-110 transition-transform"
@@ -400,22 +400,22 @@ export const AdminProductForm: React.FC = () => {
                     </div>
                     {/* Color Name Input */}
                     <div>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         required
                         placeholder="Color Name (e.g. Burgundy)"
-                        value={variant.color} 
+                        value={variant.color}
                         onChange={e => handleVariantChange(index, 'color', e.target.value)}
                         className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
                       />
                     </div>
                   </div>
-                  
+
                   {/* Size and Stock */}
                   <div className="flex-1 min-w-[150px] flex gap-4">
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-brand-taupe mb-1">Size</label>
-                      <input 
+                      <input
                         type="text" placeholder="e.g. M"
                         value={variant.size} onChange={e => handleVariantChange(index, 'size', e.target.value)}
                         className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
@@ -423,7 +423,7 @@ export const AdminProductForm: React.FC = () => {
                     </div>
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-brand-taupe mb-1">Stock</label>
-                      <input 
+                      <input
                         type="number" min="0" required
                         value={variant.stock} onChange={e => handleVariantChange(index, 'stock', Number(e.target.value))}
                         className="w-full border border-brand-stone p-2 focus:outline-none text-sm"
@@ -432,9 +432,9 @@ export const AdminProductForm: React.FC = () => {
                   </div>
 
                   <div className="flex flex-col items-center justify-center gap-2 mt-4 pl-4 border-l border-brand-stone/50">
-                    <button 
-                      type="button" 
-                      onClick={() => handleVariantChange(index, 'isArchived', !variant.isArchived)} 
+                    <button
+                      type="button"
+                      onClick={() => handleVariantChange(index, 'isArchived', !variant.isArchived)}
                       className={`text-xs font-medium px-2 py-1 border rounded transition-colors ${variant.isArchived ? 'text-green-600 border-green-600 hover:bg-green-50' : 'text-orange-500 border-orange-500 hover:bg-orange-50'}`}
                     >
                       {variant.isArchived ? 'Restore' : 'Archive'}
@@ -454,8 +454,8 @@ export const AdminProductForm: React.FC = () => {
 
         {/* Submit */}
         <div className="pt-6 border-t border-brand-stone">
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={mutation.isPending}
             className="w-full bg-brand-black text-brand-white py-4 uppercase tracking-widest font-medium hover:bg-brand-taupe transition-colors disabled:opacity-50"
           >
